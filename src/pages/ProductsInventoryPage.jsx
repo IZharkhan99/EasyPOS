@@ -1,12 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useProducts } from '../hooks/useProducts';
+import { useSuppliers } from '../hooks/useSuppliers';
+import { useInventoryHistory } from '../hooks/useInventoryHistory';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 
 export default function ProductsInventoryPage() {
-  const { products, inventoryHistory, addProduct, updateProduct, deleteProduct, deleteMultipleProducts, openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast, suppliers } = useApp();
-  const { currentUser } = useAuth();
+  const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast } = useApp();
+  const { products, addProduct, updateProduct, deleteProduct, deleteMultipleProducts, isLoading: isProductsLoading } = useProducts();
+  const { suppliers } = useSuppliers();
+  const { inventoryHistory } = useInventoryHistory();
+  const { profile } = useAuth();
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -14,7 +20,7 @@ export default function ProductsInventoryPage() {
   const [selectedIds, setSelectedIds] = useState([]);
 
   const filtered = useMemo(() =>
-    products.filter(p => !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.sku.toLowerCase().includes(filter.toLowerCase())),
+    (products || []).filter(p => !filter || p.name?.toLowerCase().includes(filter.toLowerCase()) || p.sku?.toLowerCase().includes(filter.toLowerCase())),
     [products, filter]
   );
 
@@ -45,9 +51,9 @@ export default function ProductsInventoryPage() {
     }
   };
 
-  const inStock = products.filter(p => p.stock > p.reorder).length;
-  const lowStock = products.filter(p => p.stock > 0 && p.stock <= p.reorder).length;
-  const outOfStock = products.filter(p => p.stock === 0).length;
+  const inStock = (products || []).filter(p => (p.stock || 0) > (p.reorder || 0)).length;
+  const lowStock = (products || []).filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= (p.reorder || 0)).length;
+  const outOfStock = (products || []).filter(p => (p.stock || 0) === 0).length;
 
   const handleSave = () => {
     if (!form.name.trim()) { showToast('Enter product name', 'error'); return; }
@@ -78,7 +84,7 @@ export default function ProductsInventoryPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'Total Products', value: products.length, color: '#3b82f6' },
+          { label: 'Total Products', value: (products || []).length, color: '#3b82f6' },
           { label: 'In Stock', value: inStock, color: '#22c55e' },
           { label: 'Low Stock', value: lowStock, color: '#f97316' },
           { label: 'Out of Stock', value: outOfStock, color: '#ef4444' },
@@ -154,7 +160,7 @@ export default function ProductsInventoryPage() {
                       <svg viewBox="0 0 24 24" className="w-[13px] h-[13px] stroke-current fill-none" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                     </button>
                     <button onClick={() => openEdit(p)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
-                    {currentUser?.role !== 'cashier' && (
+                    {profile?.role !== 'cashier' && (
                       <button onClick={() => deleteProduct(p.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-[#ef4444] cursor-pointer hover:bg-[rgba(239,68,68,.12)]">Delete</button>
                     )}
                   </td>

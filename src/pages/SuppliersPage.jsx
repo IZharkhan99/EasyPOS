@@ -1,20 +1,24 @@
 import { useApp } from '../context/AppContext';
+import { useSuppliers } from '../hooks/useSuppliers';
+import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
 
 export default function SuppliersPage() {
-  const { suppliers, addSupplier, updateSupplier, removeSupplier, openModal, closeModal, activeModal, modalData, showToast } = useApp();
+  const { openModal, closeModal, activeModal, modalData, showToast } = useApp();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier, isLoading } = useSuppliers();
+  const { profile } = useAuth();
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const [formData, setFormData] = useState({ name: '', contact: '', phone: '', email: '', category: 'General' });
 
-  const filtered = suppliers.filter(s => 
-    s.name.toLowerCase().includes(search.toLowerCase()) || 
-    s.contact.toLowerCase().includes(search.toLowerCase()) ||
-    s.category.toLowerCase().includes(search.toLowerCase())
+  const filtered = (suppliers || []).filter(s => 
+    s.name?.toLowerCase().includes(search.toLowerCase()) || 
+    s.contact?.toLowerCase().includes(search.toLowerCase()) ||
+    s.category?.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
@@ -87,7 +91,7 @@ export default function SuppliersPage() {
                     <button onClick={() => handleEdit(s)} className="p-1.5 rounded-md hover:bg-[#3b82f6]/10 text-theme3 hover:text-[#3b82f6] border-none bg-transparent cursor-pointer">
                       <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
-                    <button onClick={() => { if(confirm('Delete supplier?')) removeSupplier(s.id); }} className="p-1.5 rounded-md hover:bg-[#ef4444]/10 text-theme3 hover:text-[#ef4444] border-none bg-transparent cursor-pointer">
+                    <button onClick={() => { if(confirm('Delete supplier?')) deleteSupplier(s.id); }} className="p-1.5 rounded-md hover:bg-[#ef4444]/10 text-theme3 hover:text-[#ef4444] border-none bg-transparent cursor-pointer">
                       <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                     </button>
                   </div>

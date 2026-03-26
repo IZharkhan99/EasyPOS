@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { useState, useEffect, useRef } from 'react';
+import { useOrders } from '../hooks/useOrders';
+import { useProducts } from '../hooks/useProducts';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
@@ -20,9 +22,18 @@ function StatCard({ label, value, color, sub, icon }) {
 
 export default function UnifiedDashboardPage() {
   const navigate = useNavigate();
-  const { orders: allOrders, products, getOrderStats, showToast, openModal, reportRange, setReportRange, customRange, setCustomRange, getFilteredData } = useApp();
-  const orders = getFilteredData(allOrders);
-  const stats = getOrderStats(orders); 
+  const { showToast, openModal, reportRange, setReportRange, customRange, setCustomRange, getFilteredData } = useApp();
+  const { orders: allOrders } = useOrders();
+  const { products = [] } = useProducts();
+  const orders = getFilteredData(allOrders || []);
+  
+  const stats = useMemo(() => {
+    const rev = orders.reduce((s, o) => s + (o.total || 0), 0);
+    const avg = orders.length > 0 ? rev / orders.length : 0;
+    const items = orders.reduce((s, o) => s + (o.items?.length || 0), 0);
+    return { rev, avg, items };
+  }, [orders]);
+
   const [viewMode, setViewMode] = useState('advanced'); 
 
   const chartRefs = {
@@ -54,8 +65,10 @@ export default function UnifiedDashboardPage() {
     if (viewMode === 'simple') {
       // 1. Simple Revenue (7 Days)
       const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const revenueByDay = [0, 0, 0, 0, 0, 0, 0];
-      orders.forEach(o => revenueByDay[new Date(o.createdAt).getDay()] += o.total);
+      orders.forEach(o => {
+        const date = new Date(o.created_at || o.createdAt);
+        revenueByDay[date.getDay()] += (o.total || 0);
+      });
 
       const today = new Date().getDay();
       const sortedLabels = [];
@@ -93,7 +106,7 @@ export default function UnifiedDashboardPage() {
         d.setDate(d.getDate() - i);
         return d.toISOString().split('T')[0];
       }).reverse();
-      const revData = dates.map(d => orders.filter(o => o.createdAt?.startsWith(d)).reduce((s, o) => s + o.total, 0));
+      const revData = dates.map(d => orders.filter(o => (o.created_at || o.createdAt)?.startsWith(d)).reduce((s, o) => s + (o.total || 0), 0));
 
       if (chartRefs.advTrend.current) {
         const ctx = chartRefs.advTrend.current.getContext('2d');
@@ -128,7 +141,7 @@ export default function UnifiedDashboardPage() {
 
       // 3. Payment Methods
       const payMethods = ['cash', 'card', 'qr'];
-      const payData = payMethods.map(m => orders.filter(o => o.method === m).length);
+      const payData = payMethods.map(m => orders.filter(o => o.payment_method === m).length);
 
       if (chartRefs.advPay.current) {
         activeCharts.current.push(new Chart(chartRefs.advPay.current, {
@@ -140,7 +153,7 @@ export default function UnifiedDashboardPage() {
 
       // 4. Hourly Sales
       const hours = ['9am', '10am', '11am', '12pm', '1pm', '2pm', '3pm', '4pm', '5pm', '6pm', '7pm'];
-      const hourData = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].map(h => orders.filter(o => new Date(o.createdAt).getHours() === h).length);
+      const hourData = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].map(h => orders.filter(o => new Date(o.created_at || o.createdAt).getHours() === h).length);
 
       if (chartRefs.advHour.current) {
         const ctx = chartRefs.advHour.current.getContext('2d');
@@ -215,10 +228,10 @@ export default function UnifiedDashboardPage() {
 
       {/* KPI Cards (Matching original 5-card layout) */}
       <div className="grid grid-cols-5 gap-3 mb-4">
-        <StatCard label="Today's Revenue" value={`$${stats.rev.toFixed(2)}`} color="#3b82f6" sub={`vs $842 yesterday`} icon={<><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></>} />
-        <StatCard label="Orders Today" value={orders.length} color="#10b981" sub="vs 28 yesterday" icon={<><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></>} />
-        <StatCard label="Avg Order Value" value={`$${stats.avg.toFixed(2)}`} color="#f59e0b" sub="vs $30.1 yesterday" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></>} />
-        <StatCard label="Items Sold" value={orders.reduce((s,o) => s + (o.itemCount || 0), 0)} color="#8b5cf6" sub="units today" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></>} />
+        <StatCard label="Today's Revenue" value={`$${stats.rev.toFixed(2)}`} color="#3b82f6" sub={`Selected period`} icon={<><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></>} />
+        <StatCard label="Orders" value={orders.length} color="#10b981" sub="In selected period" icon={<><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></>} />
+        <StatCard label="Avg Order Value" value={`$${stats.avg.toFixed(2)}`} color="#f59e0b" sub="Average per sale" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></>} />
+        <StatCard label="Items Sold" value={stats.items} color="#8b5cf6" sub="units sold" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></>} />
         <StatCard label="Customers" value="1,248" color="#14b8a6" sub="+14 this week" icon={<><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></>} />
       </div>
 
@@ -317,14 +330,14 @@ export default function UnifiedDashboardPage() {
           <tbody>
             {recent.map(o => (
               <tr key={o.id} className="hover:bg-theme-hover transition-colors border-t border-theme border-dashed first:border-none">
-                <td className="px-4 py-2.5 text-[12px] font-extrabold text-[#3b82f6]">{o.id}</td>
-                <td className="px-4 py-2.5 text-[12px] font-medium text-theme">{o.customer}</td>
-                <td className="px-4 py-2.5 text-[11px] text-theme3">{o.itemCount} items</td>
+                <td className="px-4 py-2.5 text-[12px] font-extrabold text-[#3b82f6]">{o.id.slice(0, 8)}</td>
+                <td className="px-4 py-2.5 text-[12px] font-medium text-theme">{o.customer_name || 'Walk-in'}</td>
+                <td className="px-4 py-2.5 text-[11px] text-theme3">{o.items?.length || 0} items</td>
                 <td className="px-4 py-2.5 text-[11px]">
-                  <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${o.method === 'cash' ? 'bg-[#22c55e1a] text-[#22c55e]' : 'bg-[#3b82f61a] text-[#3b82f6]'}`}>{o.method}</span>
+                  <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${o.payment_method === 'cash' ? 'bg-[#22c55e1a] text-[#22c55e]' : 'bg-[#3b82f61a] text-[#3b82f6]'}`}>{o.payment_method}</span>
                 </td>
-                <td className="px-4 py-2.5 text-[12px] font-black text-theme">${o.total.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[11px] text-theme3 tabular-nums">{o.time}</td>
+                <td className="px-4 py-2.5 text-[12px] font-black text-theme">${(o.total || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[11px] text-theme3 tabular-nums">{new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
               </tr>
             ))}
           </tbody>

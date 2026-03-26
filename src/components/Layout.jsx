@@ -1,8 +1,10 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
-import { useState, useEffect } from 'react';
+import { useOrders } from '../hooks/useOrders';
+import { useShifts } from '../hooks/useShifts';
+import { useState, useEffect, useMemo } from 'react';
 import Toast from './Toast';
 
 const NAV_ITEMS = [
@@ -64,9 +66,15 @@ const THEMES = [
 export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, logout } = useAuth();
+  const { profile, logout, isLoading: isAuthLoading } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { shiftOpen, shiftStartTime, orders, getOrderStats, openModal, features, showToast } = useApp();
+  const { openModal, features, showToast } = useApp();
+  const { orders = [] } = useOrders();
+  const { currentShift } = useShifts();
+  
+  const shiftOpen = !!currentShift;
+  const shiftStartTime = currentShift ? new Date(currentShift.start_time) : null;
+  
   const [clock, setClock] = useState('--:--:--');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
@@ -89,7 +97,13 @@ export default function Layout() {
     return () => clearInterval(iv);
   }, []);
 
-  const stats = getOrderStats();
+  const stats = useMemo(() => {
+    const shiftOrders = shiftStartTime ? orders.filter(o => new Date(o.created_at) >= shiftStartTime) : [];
+    return {
+      cnt: orders.length,
+      rev: shiftOrders.reduce((sum, o) => sum + (o.total || 0), 0)
+    };
+  }, [orders, shiftStartTime]);
 
   const pageLabels = {
     '/': 'Dashboard', '/pos': 'Sales / POS', '/orders': 'Orders',
@@ -100,11 +114,11 @@ export default function Layout() {
     '/suppliers': 'Supplier Management', '/purchase-orders': 'Purchase Orders',
   };
 
-  const userRole = currentUser?.role || 'cashier';
+  const userRole = profile?.role || 'cashier';
   const hasAccess = (itemRole) => {
     if (!itemRole || itemRole === 'cashier') return true;
-    if (itemRole === 'manager') return userRole === 'admin' || userRole === 'manager';
-    if (itemRole === 'admin') return userRole === 'admin';
+    if (itemRole === 'manager') return userRole === 'owner' || userRole === 'admin' || userRole === 'manager';
+    if (itemRole === 'admin') return userRole === 'owner' || userRole === 'admin';
     return false;
   };
 
@@ -137,12 +151,15 @@ export default function Layout() {
           <div className="p-2 border-b border-theme overflow-hidden">
             <div className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-theme-hover ${isCollapsed ? 'justify-center' : ''}`}>
               <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#3b82f6] flex items-center justify-center text-[10px] font-extrabold text-white flex-shrink-0">
-                {currentUser?.name?.split(' ').map(x => x[0]).join('') || 'U'}
+                {profile?.name?.split(' ').map(x => x[0]).join('') || 'U'}
               </div>
               {!isCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-[12.5px] font-semibold text-theme truncate">{currentUser?.name || 'User'}</div>
-                  <div className="text-[10.5px] text-theme3 truncate">{currentUser?.role === 'admin' ? 'Admin' : 'Staff'}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-semibold text-theme truncate">{profile?.name || 'User'}</div>
+                  <div className="text-[10.5px] text-theme3 truncate flex items-center gap-1">
+                    <span className="capitalize">{profile?.role || 'Staff'}</span>
+                    {profile?.businesses?.name && <span className="text-[9px] opacity-50 truncate">@ {profile.businesses.name}</span>}
+                  </div>
                 </div>
               )}
             </div>

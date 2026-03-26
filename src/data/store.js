@@ -54,10 +54,10 @@ export const shiftHistory = [
 ];
 
 export const ordersData = [
-  { id: 'ORD-1001', customer: 'Ahmed Khan', itemCount: 3, sub: 120.00, tax: 9.60, total: 129.60, method: 'cash', time: '10:30 AM', createdAt: '2026-03-18T10:30:00Z', items: [{ name: 'iPhone Case', qty: 2, price: 15 }, { name: 'USB-C Cable', qty: 1, price: 12 }] },
-  { id: 'ORD-1002', customer: 'Walk-in', itemCount: 1, sub: 45.00, tax: 3.60, total: 48.60, method: 'card', time: '11:15 AM', createdAt: '2026-03-18T11:15:00Z', items: [{ name: 'Wireless Mouse', qty: 1, price: 45 }] },
-  { id: 'ORD-1003', customer: 'Fatima Ali', itemCount: 2, sub: 88.00, tax: 7.04, total: 95.04, method: 'qr', time: '02:45 PM', createdAt: '2026-03-17T14:45:00Z', items: [{ name: 'Power Bank', qty: 1, price: 50 }, { name: 'Earbuds', qty: 1, price: 38 }] },
-  { id: 'ORD-1004', customer: 'Walk-in', itemCount: 1, sub: 12.00, tax: 0.96, total: 12.96, method: 'cash', time: '04:20 PM', createdAt: '2026-03-16T16:20:00Z', items: [{ name: 'USB-C Cable', qty: 1, price: 12 }] },
-  { id: 'ORD-1005', customer: 'Walk-in', itemCount: 5, sub: 250.00, tax: 20.00, total: 270.00, method: 'card', time: '09:10 AM', createdAt: '2026-03-15T09:10:00Z', items: [{ name: 'Mechanical Keyboard', qty: 1, price: 120 }, { name: 'Monitor Stand', qty: 1, price: 130 }] },
-  { id: 'ORD-1006', customer: 'Hassan Raza', itemCount: 2, sub: 15.00, tax: 1.20, total: 16.20, method: 'cash', time: '12:30 PM', createdAt: '2026-03-14T12:30:00Z', items: [{ name: 'Phone Screen Protector', qty: 2, price: 7.5 }] },
+  { id: 'ORD-1001', customer: 'Ahmed Khan', itemCount: 3, sub: 120.00, disc: 0, tax: 9.60, total: 129.60, method: 'cash', time: '10:30 AM', createdAt: '2026-03-18T10:30:00Z', items: [{ name: 'iPhone Case', qty: 2, price: 15 }, { name: 'USB-C Cable', qty: 1, price: 12 }] },
+  { id: 'ORD-1002', customer: 'Walk-in', itemCount: 1, sub: 45.00, disc: 0, tax: 3.60, total: 48.60, method: 'card', time: '11:15 AM', createdAt: '2026-03-18T11:15:00Z', items: [{ name: 'Wireless Mouse', qty: 1, price: 45 }] },
+  { id: 'ORD-1003', customer: 'Fatima Ali', itemCount: 2, sub: 88.00, disc: 0, tax: 7.04, total: 95.04, method: 'qr', time: '02:45 PM', createdAt: '2026-03-17T14:45:00Z', items: [{ name: 'Power Bank', qty: 1, price: 50 }, { name: 'Earbuds', qty: 1, price: 38 }] },
+  { id: 'ORD-1004', customer: 'Walk-in', itemCount: 1, sub: 12.00, disc: 0, tax: 0.96, total: 12.96, method: 'cash', time: '04:20 PM', createdAt: '2026-03-16T16:20:00Z', items: [{ name: 'USB-C Cable', qty: 1, price: 12 }] },
+  { id: 'ORD-1005', customer: 'Walk-in', itemCount: 5, sub: 250.00, disc: 0, tax: 20.00, total: 270.00, method: 'card', time: '09:10 AM', createdAt: '2026-03-15T09:10:00Z', items: [{ name: 'Mechanical Keyboard', qty: 1, price: 120 }, { name: 'Monitor Stand', qty: 1, price: 130 }] },
+  { id: 'ORD-1006', customer: 'Hassan Raza', itemCount: 2, sub: 15.00, disc: 0, tax: 1.20, total: 16.20, method: 'cash', time: '12:30 PM', createdAt: '2026-03-14T12:30:00Z', items: [{ name: 'Phone Screen Protector', qty: 2, price: 7.5 }] },
 ];

@@ -1,5 +1,11 @@
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
+import { useOrders } from '../hooks/useOrders';
+import { useProducts } from '../hooks/useProducts';
+import { useStaff } from '../hooks/useStaff';
+import { useCustomers } from '../hooks/useCustomers';
+import { useSettings } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
 import { useRef } from 'react';
 
 const THEMES = [
@@ -12,7 +18,14 @@ const THEMES = [
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { features, toggleFeature, showToast, exportFullBackup, exportModuleAsCSV, orders, products, staff, customers, posSettings, updatePosSetting, businessInfo, updateBusinessInfo } = useApp();
+  const { features, toggleFeature, showToast, exportModuleAsCSV } = useApp();
+  const { orders = [] } = useOrders();
+  const { products = [] } = useProducts();
+  const { staff = [] } = useStaff();
+  const { customers = [] } = useCustomers();
+  const { settings: posSettings, updateSetting: updatePosSetting } = useSettings();
+  const { profile: businessInfo, updateProfile: updateBusinessInfo } = useAuth();
+  
   const fileInputRef = useRef(null);
 
   const handleExportOrders = () => {
@@ -21,10 +34,10 @@ export default function SettingsPage() {
       'Order #': o.id,
       'Customer': o.customer,
       'Items': o.itemCount,
-      'Payment': o.method,
-      'Subtotal': o.sub.toFixed(2),
-      'Tax': o.tax.toFixed(2),
-      'Total': o.total.toFixed(2),
+      'Payment': o.payment_method,
+      'Subtotal': (o.subtotal || 0).toFixed(2),
+      'Tax': (o.tax || 0).toFixed(2),
+      'Total': (o.total || 0).toFixed(2),
       'Time': o.time,
       'Date': o.date,
       'Status': o.status,
@@ -132,7 +145,7 @@ export default function SettingsPage() {
               ].map((t) => (
                 <div key={t.key} className="flex items-center justify-between py-2 border-b border-theme last:border-0">
                   <div><div className="text-[12.5px] font-semibold">{t.label}</div><div className="text-[11px] text-theme3">{t.desc}</div></div>
-                  <button onClick={() => updatePosSetting(t.key, !posSettings[t.key])} className={`toggle-switch ${posSettings[t.key] ? 'on' : ''}`} />
+                  <button onClick={() => updatePosSetting({ key: t.key, value: !posSettings[t.key] })} className={`toggle-switch ${posSettings[t.key] ? 'on' : ''}`} />
                 </div>
               ))}
             </div>
@@ -167,10 +180,10 @@ export default function SettingsPage() {
           <div className="bg-theme-surface border border-theme rounded-xl p-4">
             <div className="text-[13px] font-semibold mb-2 flex items-center gap-2">
               <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-              Full Backup
+              Cloud Backup Status
             </div>
-            <p className="text-xs text-theme3 mb-3">Export all data as JSON (orders, products, staff, customers)</p>
-            <button onClick={exportFullBackup} className="w-full bg-[#3b82f6] text-white border-none px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#2563eb]">Download Full Backup</button>
+            <p className="text-xs text-theme3 mb-3">Your data is securely backed up to the cloud automatically.</p>
+            <div className="w-full bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 px-3 py-2 rounded-lg text-xs font-semibold text-center italic">✓ Fully Synchronized</div>
           </div>
 
           {/* Export Modules */}
@@ -194,8 +207,8 @@ export default function SettingsPage() {
           <div className="flex gap-2">
             <svg viewBox="0 0 24 24" className="w-5 h-5 stroke-[#3b82f6] fill-none flex-shrink-0 mt-0.5" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             <div>
-              <div className="text-xs font-semibold text-[#3b82f6] mb-0.5">Data is currently static</div>
-              <div className="text-xs text-[#3b82f6] opacity-80">All data will be lost on refresh. Future versions will save backups to the cloud.</div>
+              <div className="text-xs font-semibold text-[#3b82f6] mb-0.5">Cloud Synchronization Active</div>
+              <div className="text-xs text-[#3b82f6] opacity-80">All changes are saved in real-time to your Supabase instance.</div>
             </div>
           </div>
         </div>

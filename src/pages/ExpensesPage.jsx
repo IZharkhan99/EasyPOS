@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useExpenses } from '../hooks/useExpenses';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 
 export default function ExpensesPage() {
-  const { expenses, addExpense, openModal, closeModal, showToast } = useApp();
+  const { openModal, closeModal, showToast } = useApp();
+  const { expenses, addExpense, isLoading } = useExpenses();
   const [filter, setFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

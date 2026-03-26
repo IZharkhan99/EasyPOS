@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAlerts } from '../hooks/useAlerts';
 import Pagination from '../components/Pagination';
 
 export default function AlertsPage() {
-  const { alerts, clearAllAlerts, showToast } = useApp();
+  const { showToast } = useApp();
+  const { alerts = [], clearAlerts, isLoading } = useAlerts();
   const [typeFilter, setTypeFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -19,10 +21,10 @@ export default function AlertsPage() {
     return filtered.slice(start, start + itemsPerPage);
   }, [filtered, currentPage, itemsPerPage]);
 
-  const critical = alerts.filter(a => a.severity === 'Critical').length;
-  const warning = alerts.filter(a => a.severity === 'Warning').length;
-  const info = alerts.filter(a => a.severity === 'Info').length;
-  const resolved = alerts.filter(a => a.status === 'Resolved').length;
+  const critical = (alerts || []).filter(a => a.severity === 'Critical').length;
+  const warning = (alerts || []).filter(a => a.severity === 'Warning').length;
+  const info = (alerts || []).filter(a => a.severity === 'Info').length;
+  const resolved = (alerts || []).filter(a => a.status === 'Resolved').length;
 
   const types = [...new Set(alerts.map(a => a.type))];
 
@@ -30,7 +32,7 @@ export default function AlertsPage() {
     <div className="flex-1 overflow-y-auto p-5">
       <div className="flex items-start justify-between mb-4">
         <div><div className="text-[21px] font-extrabold tracking-[-0.4px]">Notifications & Alerts</div><div className="text-[12.5px] text-theme3 mt-0.5">System notifications, low stock & payment alerts</div></div>
-        <button onClick={clearAllAlerts} className="bg-[#ef4444] text-white border-none px-3.5 py-2 rounded-lg text-[12.5px] font-semibold cursor-pointer hover:bg-[#dc2626]">Clear All</button>
+        <button onClick={clearAlerts} className="bg-[#ef4444] text-white border-none px-3.5 py-2 rounded-lg text-[12.5px] font-semibold cursor-pointer hover:bg-[#dc2626]">Clear All</button>
       </div>
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[{ label: 'Critical', value: critical, color: '#ef4444' }, { label: 'Warnings', value: warning, color: '#f97316' }, { label: 'Info', value: info, color: '#3b82f6' }, { label: 'Resolved', value: resolved, color: '#22c55e' }].map((s, i) => (

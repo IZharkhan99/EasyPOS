@@ -1,17 +1,38 @@
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useShifts } from '../hooks/useShifts';
+import { useOrders } from '../hooks/useOrders';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
 
 export default function ShiftPage() {
-  const { shiftOpen, shiftStartTime, shiftOpeningFloat, setShiftOpeningFloat, orders, getOrderStats, closeShift, openShift, openModal, closeModal, shiftHistory, showToast } = useApp();
-  const { currentUser } = useAuth();
-  const stats = getOrderStats();
+  const { openModal, closeModal, activeModal, showToast } = useApp();
+  const { profile: currentUser } = useAuth();
+  const { shifts, activeShift, openShift, closeShift, isLoading } = useShifts();
+  const { orders } = useOrders();
+
   const [closingCash, setClosingCash] = useState('');
   const [floatInput, setFloatInput] = useState('200');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const shiftOpen = !!activeShift;
+  
+  const currentShiftOrders = useMemo(() => 
+    (orders || []).filter(o => o.shift_id === activeShift?.id),
+    [orders, activeShift]
+  );
+
+  const stats = useMemo(() => {
+    const rev = currentShiftOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const cnt = currentShiftOrders.length;
+    const cashRev = currentShiftOrders.filter(o => o.payment_method === 'cash').reduce((sum, o) => sum + (o.total || 0), 0);
+    const cardRev = currentShiftOrders.filter(o => o.payment_method !== 'cash').reduce((sum, o) => sum + (o.total || 0), 0);
+    return { rev, cnt, cashRev, cardRev };
+  }, [currentShiftOrders]);
+
+  const shiftHistory = (shifts || []).filter(s => s.status === 'closed');
 
   const totalPages = Math.ceil(shiftHistory.length / itemsPerPage);
   const paginatedData = useMemo(() => {
@@ -19,14 +40,38 @@ export default function ShiftPage() {
     return shiftHistory.slice(start, start + itemsPerPage);
   }, [shiftHistory, currentPage, itemsPerPage]);
 
-  const handleConfirm = () => {
-    if (shiftOpen) {
-      closeShift(parseFloat(closingCash) || 0, currentUser?.name || 'Staff');
-    } else {
-      openShift(parseFloat(floatInput) || 200);
+  const handleConfirm = async () => {
+    try {
+      if (shiftOpen) {
+        const cash = parseFloat(closingCash) || 0;
+        const expected = (activeShift.opening_float || 0) + stats.cashRev;
+        await closeShift({ 
+          id: activeShift.id, 
+          data: {
+            closing_cash: cash,
+            expected_cash: expected,
+            cash_difference: cash - expected,
+            total_revenue: stats.rev,
+            cash_sales: stats.cashRev,
+            card_sales: stats.cardRev,
+            orders_count: stats.cnt,
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+          }
+        });
+      } else {
+        await openShift({ 
+          opening_float: parseFloat(floatInput) || 200,
+          status: 'open',
+          opened_at: new Date().toISOString(),
+        });
+      }
+      closeModal();
+      setClosingCash('');
+      showToast(shiftOpen ? 'Shift closed successfully' : 'Shift opened successfully', 'success');
+    } catch (err) {
+      showToast('Action failed: ' + err.message, 'error');
     }
-    closeModal();
-    setClosingCash('');
   };
 
   const printZReport = (report) => {
@@ -94,10 +139,10 @@ export default function ShiftPage() {
       <div className="grid grid-cols-5 gap-3 mb-4">
         {[
           { label: 'Status', value: shiftOpen ? 'Active' : 'Closed', color: shiftOpen ? '#22c55e' : '#ef4444' },
-          { label: 'Started', value: shiftStartTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), color: '#3b82f6' },
+          { label: 'Started', value: activeShift ? new Date(activeShift.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--', color: '#3b82f6' },
           { label: 'Orders', value: stats.cnt, color: '#8b5cf6' },
           { label: 'Revenue', value: '$' + stats.rev.toFixed(2), color: '#3b82f6' },
-          { label: 'Opening Float', value: '$' + shiftOpeningFloat.toFixed(2), color: '#f97316' },
+          { label: 'Opening Float', value: '$' + (activeShift?.opening_float || 0).toFixed(2), color: '#f97316' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -116,9 +161,9 @@ export default function ShiftPage() {
         </div>
         <div className="bg-theme-surface border border-theme rounded-xl p-3.5">
           <div className="text-[13px] font-bold mb-2">Shift Info</div>
-          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Cashier</span><span className="font-semibold">Jake Doe</span></div>
-          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Float</span><span className="font-semibold">${shiftOpeningFloat.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[13px] py-1.5"><span className="text-theme2">Expected Cash</span><span className="font-bold text-[#22c55e]">${(shiftOpeningFloat + stats.cashRev).toFixed(2)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Cashier</span><span className="font-semibold">{activeShift?.profiles?.name || currentUser?.name || 'Staff'}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Float</span><span className="font-semibold">${(activeShift?.opening_float || 0).toFixed(2)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5"><span className="text-theme2">Expected Cash</span><span className="font-bold text-[#22c55e]">${((activeShift?.opening_float || 0) + stats.cashRev).toFixed(2)}</span></div>
         </div>
       </div>
 
@@ -135,15 +180,15 @@ export default function ShiftPage() {
           </thead>
           <tbody>
             {paginatedData.map((s, i) => (
-              <tr key={i} className="hover:bg-theme-hover">
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.date}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.cashier}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.opened}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.closed}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.duration}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.ordersCount}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme font-bold text-[#3b82f6]">${s.revenue.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${s.float.toFixed(2)}</td>
+              <tr key={s.id} className="hover:bg-theme-hover">
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{new Date(s.closed_at).toLocaleDateString()}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.profiles?.name || 'Staff'}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{new Date(s.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.closed_at ? new Date(s.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{Math.round((new Date(s.closed_at) - new Date(s.opened_at)) / 60000)}m</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.orders_count || 0}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme font-bold text-[#3b82f6]">${(s.total_revenue || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(s.opening_float || 0).toFixed(2)}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <button onClick={() => printZReport(s)} className="bg-theme-elevated border border-theme px-2 py-1 rounded-md text-[10px] text-theme flex items-center gap-1 hover:bg-theme-hover cursor-pointer">
                     <svg viewBox="0 0 24 24" className="w-[11px] h-[11px] stroke-current fill-none" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>

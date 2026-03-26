@@ -1,15 +1,21 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useOrders } from '../hooks/useOrders';
+import { usePurchaseOrders } from '../hooks/usePurchaseOrders';
+import { useStaff } from '../hooks/useStaff';
+import { useCustomers } from '../hooks/useCustomers';
 
 export default function ReportsPage() {
   const { 
-    orders: allOrders, 
-    purchaseOrders: allPO, 
-    staff, customers, 
     reportRange, setReportRange, 
     getFilteredData, getRangeDates,
     printSummaryReport
   } = useApp();
+
+  const { orders: allOrders } = useOrders();
+  const { purchaseOrders: allPO } = usePurchaseOrders();
+  const { staff } = useStaff();
+  const { customers } = useCustomers();
 
   const [activeTab, setActiveTab] = useState('sales');
 

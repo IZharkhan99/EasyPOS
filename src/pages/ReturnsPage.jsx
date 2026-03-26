@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useReturns } from '../hooks/useReturns';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 
 export default function ReturnsPage() {
-  const { returns, addReturn, approveReturn, rejectReturn, openModal, closeModal, showToast } = useApp();
-  const { currentUser } = useAuth();
+  const { openModal, closeModal, showToast } = useApp();
+  const { returns, createReturn, updateReturn, isLoading } = useReturns();
+  const { profile: currentUser } = useAuth();
   const isManager = currentUser?.role === 'admin' || currentUser?.role === 'manager';
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -14,7 +16,7 @@ export default function ReturnsPage() {
   const [form, setForm] = useState({ orderRef: '', items: '', reason: 'Changed Mind', amount: '', method: 'Cash' });
 
   const filtered = useMemo(() =>
-    returns.filter(r => !filter || r.id.includes(filter) || r.customer.toLowerCase().includes(filter.toLowerCase())),
+    (returns || []).filter(r => !filter || r.id?.includes(filter) || r.customer?.toLowerCase().includes(filter.toLowerCase())),
     [returns, filter]
   );
 
@@ -24,13 +26,18 @@ export default function ReturnsPage() {
     return filtered.slice(start, start + itemsPerPage);
   }, [filtered, currentPage, itemsPerPage]);
 
-  const amount = returns.reduce((s, r) => s + r.amount, 0);
-  const pending = returns.filter(r => r.status === 'Pending').length;
+  const amount = (returns || []).reduce((s, r) => s + (r.amount || 0), 0);
+  const pending = (returns || []).filter(r => r.status === 'Pending').length;
 
-  const handleSave = () => {
-    addReturn({ ...form, orderRef: form.orderRef, customer: 'Customer', amount: parseFloat(form.amount) || 0, date: new Date().toISOString().split('T')[0], createdBy: 'Current User' });
-    closeModal();
-    setForm({ orderRef: '', items: '', reason: 'Changed Mind', amount: '', method: 'Cash' });
+  const handleSave = async () => {
+    try {
+      await createReturn({ ...form, amount: parseFloat(form.amount) || 0, date: new Date().toISOString().split('T')[0] });
+      closeModal();
+      setForm({ orderRef: '', items: '', reason: 'Changed Mind', amount: '', method: 'Cash' });
+      showToast('Return created successfully', 'success');
+    } catch (err) {
+      showToast('Failed to create return', 'error');
+    }
   };
 
   return (
@@ -63,8 +70,8 @@ export default function ReturnsPage() {
                     {r.status === 'Pending' ? (
                       isManager ? (
                         <>
-                          <button onClick={() => approveReturn(r.id)} className="bg-[rgba(34,197,94,.12)] text-[#22c55e] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded text-[10px] font-bold hover:bg-[#22c55e] hover:text-white transition-all">Approve</button>
-                          <button onClick={() => rejectReturn(r.id)} className="bg-[rgba(239,68,68,.12)] text-[#ef4444] border border-[rgba(239,68,68,.2)] px-2 py-1 rounded text-[10px] font-bold hover:bg-[#ef4444] hover:text-white transition-all">Reject</button>
+                          <button onClick={() => updateReturn({ id: r.id, status: 'Approved' })} className="bg-[rgba(34,197,94,.12)] text-[#22c55e] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded text-[10px] font-bold hover:bg-[#22c55e] hover:text-white transition-all">Approve</button>
+                          <button onClick={() => updateReturn({ id: r.id, status: 'Rejected' })} className="bg-[rgba(239,68,68,.12)] text-[#ef4444] border border-[rgba(239,68,68,.2)] px-2 py-1 rounded text-[10px] font-bold hover:bg-[#ef4444] hover:text-white transition-all">Reject</button>
                         </>
                       ) : (
                         <span className="text-[11px] text-theme3 italic">Awaiting Approval</span>

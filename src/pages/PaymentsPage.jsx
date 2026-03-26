@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { usePayments } from '../hooks/usePayments';
 import Pagination from '../components/Pagination';
 
 export default function PaymentsPage() {
-  const { payments, showToast } = useApp();
+  const { showToast } = useApp();
+  const { payments, createPayment, isLoading } = usePayments();
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;

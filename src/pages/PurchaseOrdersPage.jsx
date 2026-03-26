@@ -1,20 +1,24 @@
 import { useApp } from '../context/AppContext';
+import { usePurchaseOrders } from '../hooks/usePurchaseOrders';
+import { useSuppliers } from '../hooks/useSuppliers';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
 
 export default function PurchaseOrdersPage() {
-   const { purchaseOrders, suppliers, addPurchaseOrder, updatePOStatus, openModal, closeModal, activeModal, modalData, showToast, printSupplierInvoice } = useApp();
+   const { openModal, closeModal, activeModal, modalData, showToast, printSupplierInvoice } = useApp();
+   const { purchaseOrders, createPurchaseOrder, updatePurchaseOrder, isLoading: isPOLoading } = usePurchaseOrders();
+   const { suppliers, isLoading: isSuppliersLoading } = useSuppliers();
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const [formData, setFormData] = useState({ supplier: '', total: 0, date: new Date().toISOString().split('T')[0], status: 'Pending' });
 
-  const filtered = purchaseOrders.filter(po => 
-    po.id.toLowerCase().includes(search.toLowerCase()) || 
-    po.supplier.toLowerCase().includes(search.toLowerCase()) ||
-    po.status.toLowerCase().includes(search.toLowerCase())
+  const filtered = (purchaseOrders || []).filter(po => 
+    po.id?.toLowerCase().includes(search.toLowerCase()) || 
+    po.supplier?.toLowerCase().includes(search.toLowerCase()) ||
+    po.status?.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
@@ -30,7 +34,7 @@ export default function PurchaseOrdersPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    addPurchaseOrder(formData);
+    createPurchaseOrder(formData);
     closeModal();
   };
 
@@ -78,14 +82,14 @@ export default function PurchaseOrdersPage() {
                 <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">{po.id}</td>
                 <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.supplier}</td>
                 <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.date}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">${po.total.toFixed(2)}</td>
+                <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">${(po.total || 0).toFixed(2)}</td>
                 <td className="px-4 py-3 text-[13px] border-b border-theme">
                   <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ backgroundColor: getStatusColor(po.status) + '20', color: getStatusColor(po.status) }}>{po.status}</span>
                 </td>
                  <td className="px-4 py-3 text-[13px] border-b border-theme whitespace-nowrap">
                    <div className="flex gap-2">
                      {po.status === 'Pending' && (
-                       <button onClick={() => updatePOStatus(po.id, 'Received')} className="text-[11px] font-bold text-[#22c55e] bg-[rgba(34,197,94,.1)] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#22c55e] hover:text-white transition-all">
+                       <button onClick={() => updatePurchaseOrder({ id: po.id, data: { status: 'Received' } })} className="text-[11px] font-bold text-[#22c55e] bg-[rgba(34,197,94,.1)] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#22c55e] hover:text-white transition-all">
                          Receive Stock
                        </button>
                      )}

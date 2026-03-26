@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useStaff } from '../hooks/useStaff';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 
 export default function StaffPage() {
-  const { staff, addStaffMember, updateStaffMember, removeStaffMember, removeMultipleStaff, openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast, printStaffPayslip } = useApp();
-  const { currentUser } = useAuth();
+  const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast, printStaffPayslip } = useApp();
+  const { staff, addStaff, updateStaff, deleteStaff, deleteMultipleStaff, isLoading } = useStaff();
+  const { profile: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const [filter, setFilter] = useState('');
   const [showPins, setShowPins] = useState({});
@@ -15,7 +17,7 @@ export default function StaffPage() {
   const [form, setForm] = useState({ name: '', position: 'Cashier', shift: 'Morning', phone: '', salary: '', commType: 'percentage', commAmount: '' });
 
   const filtered = useMemo(() => 
-    staff.filter(s => !filter || s.name.toLowerCase().includes(filter.toLowerCase()) || s.phone.includes(filter)),
+    (staff || []).filter(s => !filter || s.name?.toLowerCase().includes(filter.toLowerCase()) || s.phone?.includes(filter)),
     [staff, filter]
   );
 
@@ -41,29 +43,62 @@ export default function StaffPage() {
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (confirm(`Are you sure you want to remove ${selectedIds.length} staff members?`)) {
-      removeMultipleStaff(selectedIds);
-      setSelectedIds([]);
+      try {
+        await deleteMultipleStaff(selectedIds);
+        setSelectedIds([]);
+        showToast('Staff removed successfully', 'success');
+      } catch (err) {
+        showToast('Bulk delete failed', 'error');
+      }
     }
   };
 
-  const present = staff.filter(s => s.status === 'Active').length;
-  const commission = staff.reduce((sum, s) => sum + (s.salary * 0.1), 0);
+  const present = (staff || []).filter(s => s.is_active).length;
+  const commission = (staff || []).reduce((sum, s) => sum + ((s.salary || 0) * ((s.commission_amount || 0) / 100)), 0);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) { showToast('Enter staff name', 'error'); return; }
-    if (activeModal === 'editStaff' && modalData) {
-      updateStaffMember(modalData.id, { ...form, salary: parseFloat(form.salary) || 500, commAmount: parseFloat(form.commAmount) || 2 });
-    } else {
-      addStaffMember({ ...form, salary: parseFloat(form.salary) || 500, commAmount: parseFloat(form.commAmount) || 2, hired: new Date().toISOString().split('T')[0] });
+    
+    const dbData = {
+      name: form.name,
+      phone: form.phone,
+      role: form.position?.toLowerCase() || 'cashier',
+      shift_type: form.shift,
+      is_active: form.status === 'Active',
+      salary: parseFloat(form.salary) || 0,
+      commission_type: form.commType || 'percentage',
+      commission_amount: parseFloat(form.commAmount) || 0,
+      pin: form.pin,
+    };
+
+    try {
+      if (activeModal === 'editStaff' && modalData) {
+        await updateStaff({ id: modalData.id, ...dbData });
+      } else {
+        await addStaff(dbData);
+      }
+      closeModal();
+      setForm({ name: '', position: 'Cashier', shift: 'Morning', phone: '', salary: '', commType: 'percentage', commAmount: '' });
+      showToast('Staff profile saved', 'success');
+    } catch (err) {
+      showToast('Failed to save staff: ' + err.message, 'error');
     }
-    closeModal();
-    setForm({ name: '', position: 'Cashier', shift: 'Morning', phone: '', salary: '', commType: 'percentage', commAmount: '' });
   };
 
   const openEdit = (s) => {
-    setForm({ ...s, salary: String(s.salary), commAmount: String(s.commAmount) });
+    setForm({ 
+      name: s.name, 
+      phone: s.phone || '', 
+      position: s.role?.charAt(0).toUpperCase() + s.role?.slice(1) || 'Cashier',
+      shift: s.shift_type || 'Morning',
+      status: s.is_active ? 'Active' : 'On Leave',
+      salary: String(s.salary || 0),
+      commType: s.commission_type || 'percentage',
+      commAmount: String(s.commission_amount || 0),
+      pin: s.pin || '',
+    });
     openModal('editStaff', s);
   };
 
@@ -79,7 +114,7 @@ export default function StaffPage() {
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'Total Staff', value: staff.length, color: '#3b82f6' },
+          { label: 'Total Staff', value: (staff || []).length, color: '#3b82f6' },
           { label: 'Present Today', value: present, color: '#22c55e' },
           { label: 'Avg Hours', value: '8.5', color: '#f97316' },
           { label: 'Commission Due', value: '$' + commission.toFixed(2), color: '#8b5cf6' },
@@ -125,24 +160,24 @@ export default function StaffPage() {
                   <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => toggleSelect(s.id)} className="cursor-pointer" />
                 </td>
                 <td className="px-4 py-2.5 text-[13px] font-bold border-b border-theme">{s.name}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.position}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{s.shift}</span></td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${s.status === 'Active' ? 'bg-[rgba(34,197,94,.12)] text-[#22c55e]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{s.status}</span></td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.role?.charAt(0).toUpperCase() + s.role?.slice(1)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{s.shift_type}</span></td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${s.is_active ? 'bg-[rgba(34,197,94,.12)] text-[#22c55e]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <div className="flex items-center gap-1.5 font-mono">
                     {showPins[s.id] ? s.pin : '••••'}
                     <button onClick={() => setShowPins(prev => ({ ...prev, [s.id]: !prev[s.id] }))} className="text-[10px] text-[#3b82f6] hover:underline bg-none border-none p-0 cursor-pointer">{showPins[s.id] ? 'Hide' : 'Show'}</button>
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(139,92,246,.12)] text-[#8b5cf6]">{s.access || 'Cashier'}</span></td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(139,92,246,.12)] text-[#8b5cf6]">{s.role?.toUpperCase() || 'CASHIER'}</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.phone}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(s.salary * (s.commAmount / 100)).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${((s.salary || 0) * ((s.commission_amount || 0) / 100)).toFixed(2)}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <div className="flex gap-1.5">
                     <button onClick={() => openEdit(s)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
                     <button onClick={() => printStaffPayslip(s)} className="bg-theme-elevated border border-[#3b82f6]/20 px-2.5 py-1 rounded-md text-[11px] text-[#3b82f6] font-bold cursor-pointer hover:bg-[#3b82f6] hover:text-white transition-all">Payslip</button>
                     {isAdmin && (
-                      <button onClick={() => removeStaffMember(s.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Remove</button>
+                      <button onClick={() => deleteStaff(s.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Remove</button>
                     )}
                   </div>
                 </td>

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuditLogs } from '../hooks/useAuditLogs';
 import Pagination from '../components/Pagination';
 
 export default function AuditLogPage() {
-  const { auditLogs, exportModuleAsCSV } = useApp();
+  const { exportModuleAsCSV } = useApp();
+  const { auditLogs, isLoading } = useAuditLogs();
   const [filter, setFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

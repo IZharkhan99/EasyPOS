@@ -1,20 +1,31 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { useOrders } from '../hooks/useOrders';
 import Pagination from '../components/Pagination';
 
 export default function OrdersPage() {
-  const { orders, getOrderStats, printReceipt, printInvoice } = useApp();
+  const { printReceipt, printInvoice } = useApp();
+  const { orders, isLoading } = useOrders();
   const [filter, setFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const stats = getOrderStats();
+
+  const stats = useMemo(() => {
+    const rev = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const cnt = orders.length;
+    const avg = cnt ? rev / cnt : 0;
+    const cashRev = orders.filter(o => o.payment_method === 'cash').reduce((sum, o) => sum + (o.total || 0), 0);
+    const cardRev = orders.filter(o => o.payment_method !== 'cash').reduce((sum, o) => sum + (o.total || 0), 0);
+    const itemsCnt = orders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0);
+    return { rev, cnt, avg, cashRev, cardRev, itemsCnt };
+  }, [orders]);
 
   const filtered = useMemo(() => 
     orders.filter(o => {
-      const matchSearch = !filter || o.id.includes(filter) || o.customer.toLowerCase().includes(filter.toLowerCase());
-      const orderDate = new Date(o.createdAt);
+      const matchSearch = !filter || o.id.includes(filter) || o.order_number?.includes(filter) || o.customers?.name?.toLowerCase().includes(filter.toLowerCase());
+      const orderDate = new Date(o.created_at);
       const matchStart = !startDate || orderDate >= new Date(startDate);
       const matchEnd = !endDate || orderDate <= new Date(endDate + 'T23:59:59');
       return matchSearch && matchStart && matchEnd;
@@ -38,9 +49,9 @@ export default function OrdersPage() {
         {[
           { label: 'Total Revenue', value: '$' + stats.rev.toFixed(2), sub: stats.cnt + ' transactions', color: '#3b82f6' },
           { label: 'Average Order', value: stats.cnt ? '$' + stats.avg.toFixed(2) : '$0.00', sub: 'per transaction', color: '#f97316' },
-          { label: 'Cash Revenue', value: '$' + stats.cashRev.toFixed(2), sub: orders.filter(o => o.method === 'cash').length + ' orders', color: '#22c55e' },
-          { label: 'Card Revenue', value: '$' + stats.cardRev.toFixed(2), sub: orders.filter(o => o.method !== 'cash').length + ' orders', color: '#8b5cf6' },
-          { label: 'Items Sold', value: stats.itemsCnt, sub: 'units today', color: '#14b8a6' },
+          { label: 'Cash Revenue', value: '$' + stats.cashRev.toFixed(2), sub: orders.filter(o => o.payment_method === 'cash').length + ' orders', color: '#22c55e' },
+          { label: 'Card Revenue', value: '$' + stats.cardRev.toFixed(2), sub: orders.filter(o => o.payment_method !== 'cash').length + ' orders', color: '#8b5cf6' },
+          { label: 'Items Sold', value: stats.itemsCnt, sub: 'units total', color: '#14b8a6' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -82,18 +93,18 @@ export default function OrdersPage() {
           <tbody>
             {paginatedData.length ? paginatedData.map(o => (
               <tr key={o.id} className="hover:bg-theme-hover">
-                <td className="px-4 py-2.5 text-[13px] font-bold border-b border-theme">{o.id}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{o.customer}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{o.itemCount}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold border-b border-theme truncate max-w-[100px]" title={o.id}>{o.order_number || o.id.slice(0, 8)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{o.customers?.name || 'Walk-in'}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{o.order_items?.length || 0}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${o.method === 'cash' ? 'bg-[rgba(34,197,94,.12)] text-[#22c55e]' : o.method === 'card' ? 'bg-[rgba(59,130,246,.12)] text-[#3b82f6]' : 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]'}`}>
-                    {o.method.charAt(0).toUpperCase() + o.method.slice(1)}
+                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${o.payment_method === 'cash' ? 'bg-[rgba(34,197,94,.12)] text-[#22c55e]' : o.payment_method === 'card' ? 'bg-[rgba(59,130,246,.12)] text-[#3b82f6]' : 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]'}`}>
+                    {(o.payment_method || 'cash').charAt(0).toUpperCase() + (o.payment_method || 'cash').slice(1)}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${o.sub.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${o.tax.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${o.total.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{o.time}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(o.subtotal || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(o.tax_amount || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${(o.total || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-[rgba(34,197,94,.12)] text-[#22c55e]">Completed</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <div className="flex gap-1.5">

@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { useAuth } from './hooks/useAuth';
 import { ThemeProvider } from './context/ThemeContext';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import OnboardingPage from './pages/OnboardingPage';
 import UnifiedDashboardPage from './pages/UnifiedDashboardPage';
 import POSPage from './pages/POSPage';
 import OrdersPage from './pages/OrdersPage';
@@ -22,8 +23,9 @@ import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 import ReportsPage from './pages/ReportsPage';
 
 function ProtectedRoute({ children }) {
-  const { currentUser } = useAuth();
-  if (!currentUser) return <Navigate to="/login" replace />;
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return children;
 }
 
@@ -31,12 +33,12 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<OnboardingPage />} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<UnifiedDashboardPage />} />
         <Route path="pos" element={<POSPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="products" element={<ProductsInventoryPage />} />
-        <Route path="customers" element={<CustomersPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="shift" element={<ShiftPage />} />
         <Route path="staff" element={<StaffPage />} />
@@ -57,13 +59,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ThemeProvider>
-          <AppProvider>
-            <AppRoutes />
-          </AppProvider>
-        </ThemeProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <AppRoutes />
+        </AppProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

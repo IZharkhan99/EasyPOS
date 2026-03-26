@@ -1,21 +1,22 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import { useApp } from '../context/AppContext';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@shop.com');
+  const [email, setEmail] = useState('izharkhanfff@gmail.com');
   const [password, setPassword] = useState('admin123');
-  const { login } = useAuth();
+  const { login, isLoggingIn } = useAuth();
   const { showToast } = useApp();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (login(email, password)) {
+    try {
+      await login({ email, password });
       navigate('/');
-    } else {
-      showToast('Invalid email or password', 'error');
+    } catch (err) {
+      showToast(err.message || 'Invalid email or password', 'error');
     }
   };
 
@@ -38,13 +39,22 @@ export default function LoginPage() {
             <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Enter password" required
               className="bg-theme-elevated border border-theme2 rounded-[9px] py-[11px] px-[13px] text-[13px] text-theme outline-none transition-all focus:border-[#3b82f6] font-[DM_Sans]" />
           </div>
-          <button type="submit" className="bg-[#3b82f6] text-white border-none py-3 rounded-[9px] text-sm font-bold cursor-pointer transition-all mt-2 hover:bg-[#2563eb]">Sign In</button>
+          <button 
+            type="submit" 
+            disabled={isLoggingIn}
+            className="bg-[#3b82f6] text-white border-none py-3 rounded-[9px] text-sm font-bold cursor-pointer transition-all mt-2 hover:bg-[#2563eb] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoggingIn ? 'Signing In...' : 'Sign In'}
+          </button>
         </form>
         <div className="bg-theme-elevated border border-theme rounded-[9px] p-3 mt-3.5">
           <div className="text-[11px] font-bold text-theme3 uppercase tracking-[.5px] mb-2">Demo Accounts</div>
           <div className="text-xs py-1.5 text-theme2"><strong className="text-theme font-semibold">Email:</strong> admin@shop.com</div>
           <div className="text-xs py-1.5 text-theme2"><strong className="text-theme font-semibold">Password:</strong> admin123</div>
           <div className="text-xs py-1.5 text-theme2 mt-2"><strong className="text-theme font-semibold">or</strong> manager@shop.com / manager123</div>
+        </div>
+        <div className="text-center mt-5 text-[13px] text-theme2">
+          New here? <Link to="/signup" className="text-[#3b82f6] font-bold hover:underline">Create a Business</Link>
         </div>
       </div>
     </div>

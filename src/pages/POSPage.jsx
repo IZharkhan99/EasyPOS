@@ -1,14 +1,43 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../hooks/useAuth';
+import { useProducts } from '../hooks/useProducts';
+import { useCustomers } from '../hooks/useCustomers';
+import { useOrders } from '../hooks/useOrders';
+import { useCart } from '../hooks/useCart';
+import { useShifts } from '../hooks/useShifts';
+import { useSettings } from '../hooks/useSettings';
 import Modal from '../components/Modal';
 
 export default function POSPage() {
-  const { products, cart, addToCart: originalAddToCart, changeQty, removeFromCart, clearCart, currentCustomer, setCurrentCustomer, discount, setDiscount, selectedPay, setSelectedPay, getCartTotals, holdOrder, heldOrders, restoreHeldOrder, openModal, showToast, activeModal, modalData, closeModal, processOrder, customers, printReceipt, printInvoice, shiftOpen, posSettings } = useApp();
+  const { openModal, closeModal, activeModal, modalData, showToast, printReceipt, printInvoice } = useApp();
+  const { profile } = useAuth();
+  const { products, isLoading: isProductsLoading } = useProducts();
+  const { customers } = useCustomers();
+  const { createOrder, isCreating } = useOrders();
+  const { activeShift } = useShifts();
+  const { settings } = useSettings();
+  const { 
+    cart, addToCart: cartAdd, updateQty, removeFromCart, clearCart, 
+    currentCustomer, setCurrentCustomer, discount, setDiscount, 
+    discountType, setDiscountType, subtotal, discountAmount, total, itemCount,
+    heldOrders, holdOrder, restoreHeldOrder
+  } = useCart();
+
   const [search, setSearch] = useState('');
   const [activeCat, setActiveCat] = useState('All');
   const [cashInput, setCashInput] = useState('');
   const [custSearch, setCustSearch] = useState('');
+  const [selectedPay, setSelectedPay] = useState('cash');
   const searchRef = useRef(null);
+
+  const posSettings = {
+    requireShift: settings.pos_require_shift !== 'false',
+    scanSound: settings.pos_scan_sound !== 'false',
+    quickCheckout: settings.pos_quick_checkout !== 'false',
+  };
+
+  const shiftOpen = !!activeShift;
 
   useEffect(() => {
     if (!activeModal && searchRef.current) {
@@ -16,14 +45,17 @@ export default function POSPage() {
     }
   }, [activeModal, cart.length]);
 
-  const addToCart = (id) => {
+  const addToCart = (productId) => {
     if (!shiftOpen && posSettings.requireShift) {
       showToast('Shift is closed! Open a shift to start selling.', 'error');
       openModal('shift');
       return;
     }
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    
     if (posSettings.scanSound) console.log('🔊 Scanner Beep: Product added');
-    originalAddToCart(id);
+    cartAdd(product);
   };
 
   const categories = useMemo(() => ['All', ...new Set(products.map(p => p.category))], [products]);
@@ -33,21 +65,58 @@ export default function POSPage() {
     return mc && ms;
   }), [products, activeCat, search]);
 
-  const totals = getCartTotals();
   const inCart = {};
   cart.forEach(c => inCart[c.id] = c.qty);
 
-  const change = Math.max(0, (parseFloat(cashInput) || 0) - totals.total);
+  const change = Math.max(0, (parseFloat(cashInput) || 0) - total);
 
-  const handlePay = () => {
+  const handlePay = async () => {
     const method = selectedPay;
     if (method === 'cash') {
-      const cash = parseFloat(cashInput) || totals.total; // Use total as default for Quick Checkout
-      if (cash < totals.total) { showToast('Insufficient cash amount', 'error'); return; }
+      const cash = parseFloat(cashInput) || total;
+      if (cash < total) { showToast('Insufficient cash amount', 'error'); return; }
     }
-    const order = processOrder(method);
-    closeModal();
-    openModal('receipt', order);
+
+    try {
+      const orderData = {
+        customer_id: currentCustomer?.id,
+        total: total,
+        subtotal: subtotal,
+        discount_amount: discountAmount,
+        tax_amount: total * 0.08, // Hardcoded for now, should be from settings
+        payment_method: method,
+        status: 'completed',
+        shift_id: activeShift?.id,
+        user_id: profile.id, // DB uses user_id as FK to profiles
+      };
+
+      const itemsData = cart.map(item => ({
+        product_id: item.id,
+        name: item.name,
+        qty: item.qty,
+        unit_price: item.price,
+        total: item.price * item.qty,
+      }));
+
+      const newOrder = await createOrder({ orderData, itemsData });
+      
+      // Map to legacy format for receipt/invoice components
+      const legacyOrder = {
+        ...newOrder,
+        customer: currentCustomer?.name || 'Walk-in Customer',
+        items: cart,
+        sub: subtotal,
+        tax: total * 0.08,
+        total: total,
+        createdAt: new Date(),
+      };
+
+      clearCart();
+      closeModal();
+      openModal('receipt', legacyOrder);
+    } catch (err) {
+      showToast('Failed to process order: ' + err.message, 'error');
+    }
   };
 
 
@@ -110,7 +179,7 @@ export default function POSPage() {
       <div className="w-[330px] min-w-[330px] bg-theme-surface border-l border-theme flex flex-col theme-transition">
         <div className="px-3.5 py-3 border-b border-theme flex items-center gap-2 flex-shrink-0">
           <span className="text-[13px] font-bold flex-1">Current Order</span>
-          <span className="bg-[rgba(59,130,246,.12)] text-[#3b82f6] text-[10px] font-extrabold px-2 py-0.5 rounded-full">{totals.itemCount}</span>
+          <span className="bg-[rgba(59,130,246,.12)] text-[#3b82f6] text-[10px] font-extrabold px-2 py-0.5 rounded-full">{itemCount}</span>
           <button onClick={clearCart} className="text-[11.5px] text-[#ef4444] cursor-pointer bg-none border-none px-[7px] py-[3px] rounded-md transition-all hover:bg-[rgba(239,68,68,.12)]">✕ Clear</button>
         </div>
 
@@ -119,7 +188,7 @@ export default function POSPage() {
           <div className="w-[26px] h-[26px] rounded-full bg-[rgba(59,130,246,.12)] flex items-center justify-center">
             <svg viewBox="0 0 24 24" className="w-[13px] h-[13px] stroke-[#3b82f6] fill-none" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
-          <span className="text-[12.5px] font-semibold flex-1">{currentCustomer.name}</span>
+          <span className="text-[12.5px] font-semibold flex-1">{currentCustomer?.name || 'Walk-in Customer'}</span>
           <span onClick={() => openModal('customer')} className="text-[11px] text-[#3b82f6] cursor-pointer underline">Change</span>
         </div>
 
@@ -133,9 +202,9 @@ export default function POSPage() {
                 <div className="text-[11px] text-theme3">${item.price.toFixed(2)} × {item.qty} = ${(item.price * item.qty).toFixed(2)}</div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => changeQty(item.id, -1)} className="w-5 h-5 rounded-[5px] bg-theme-hover border-none text-theme cursor-pointer text-[13px] flex items-center justify-center hover:bg-theme-elevated">−</button>
+                <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-5 h-5 rounded-[5px] bg-theme-hover border-none text-theme cursor-pointer text-[13px] flex items-center justify-center hover:bg-theme-elevated">−</button>
                 <span className="text-xs font-bold min-w-[16px] text-center">{item.qty}</span>
-                <button onClick={() => changeQty(item.id, 1)} className="w-5 h-5 rounded-[5px] bg-theme-hover border-none text-theme cursor-pointer text-[13px] flex items-center justify-center hover:bg-theme-elevated">+</button>
+                <button onClick={() => updateQty(item.id, item.qty + 1)} className="w-5 h-5 rounded-[5px] bg-theme-hover border-none text-theme cursor-pointer text-[13px] flex items-center justify-center hover:bg-theme-elevated">+</button>
               </div>
               <button onClick={() => removeFromCart(item.id)} className="w-[18px] h-[18px] bg-none border-none text-theme3 cursor-pointer text-xs flex items-center justify-center flex-shrink-0 hover:text-[#ef4444]">✕</button>
             </div>
@@ -149,16 +218,16 @@ export default function POSPage() {
 
         {/* Cart Summary */}
         <div className="px-3.5 py-2.5 border-t border-theme flex-shrink-0">
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Subtotal</span><span>${totals.sub.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
           <div className="flex gap-1.5 my-1.5">
             <input type="number" placeholder="Discount %" min="0" max="100" value={discount || ''} onChange={e => setDiscount(parseFloat(e.target.value) || 0)}
               className="flex-1 bg-theme-elevated border border-theme2 rounded-[7px] px-2.5 py-1.5 text-xs text-theme outline-none focus:border-[#3b82f6]" />
             <button onClick={() => { if (discount >= 0 && discount <= 100) showToast(`${discount}% discount applied`, 'success'); else showToast('Enter discount 0–100%', 'error'); }}
               className="bg-theme-elevated border border-theme2 rounded-[7px] px-2.5 py-1.5 text-[11.5px] text-theme2 cursor-pointer hover:bg-theme-hover">Apply</button>
           </div>
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Discount</span><span className="text-[#22c55e]">-${totals.disc.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Tax (8%)</span><span>${totals.tax.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[15px] font-extrabold mt-[7px] pt-[7px] border-t border-theme"><span>Total</span><span>${totals.total.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Discount</span><span className="text-[#22c55e]">-${discountAmount.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Tax (8%)</span><span>${(total * 0.08).toFixed(2)}</span></div>
+          <div className="flex justify-between text-[15px] font-extrabold mt-[7px] pt-[7px] border-t border-theme"><span>Total</span><span>${total.toFixed(2)}</span></div>
           <div className="h-2" />
 
           {/* Payment Methods */}
@@ -182,14 +251,14 @@ export default function POSPage() {
           }} disabled={!cart.length}
             className={`w-full py-3 rounded-[9px] border-none text-white text-[13.5px] font-extrabold cursor-pointer flex items-center justify-center gap-[7px] transition-all disabled:opacity-35 disabled:pointer-events-none ${!shiftOpen && posSettings.requireShift ? 'bg-gray-500' : 'bg-[#3b82f6] hover:bg-[#2563eb]'}`}>
             <svg viewBox="0 0 24 24" className="w-[15px] h-[15px] stroke-white fill-none" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            {!shiftOpen && posSettings.requireShift ? 'Shift Closed' : `Charge $${totals.total.toFixed(2)}`}
+            {!shiftOpen && posSettings.requireShift ? 'Shift Closed' : `Charge $${total.toFixed(2)}`}
           </button>
         </div>
       </div>
 
       {/* CHECKOUT MODAL */}
-      <Modal id="checkout" title="Complete Payment" subtitle={`${totals.itemCount} items · ${currentCustomer.name}`}>
-        <div className="text-[30px] font-black text-[#3b82f6] text-center my-3.5 tracking-[-1px]">${totals.total.toFixed(2)}</div>
+      <Modal id="checkout" title="Complete Payment" subtitle={`${cart.length} items · ${currentCustomer?.name || 'Walk-in'}`}>
+        <div className="text-[30px] font-black text-[#3b82f6] text-center my-3.5 tracking-[-1px]">${total.toFixed(2)}</div>
         <div className="grid grid-cols-3 gap-[7px] mb-4">
           {['cash', 'card', 'qr'].map(m => (
             <button key={m} onClick={() => setSelectedPay(m)}
@@ -202,7 +271,7 @@ export default function POSPage() {
           <div>
             <div className="flex gap-[7px] mb-2.5">
               {[5, 10, 20, 50, 100].map(v => (
-                <button key={v} onClick={() => setCashInput(String(Math.max(v, Math.ceil(totals.total))))}
+                <button key={v} onClick={() => setCashInput(String(Math.max(v, Math.ceil(total))))}
                   className="flex-1 py-2 rounded-[7px] border border-theme2 bg-theme-elevated text-theme2 cursor-pointer text-[12.5px] font-semibold hover:bg-theme-hover hover:text-theme">${v}</button>
               ))}
             </div>
@@ -213,7 +282,7 @@ export default function POSPage() {
             </div>
             <div className="bg-[rgba(34,197,94,.12)] border border-[rgba(34,197,94,.25)] rounded-[9px] px-3 py-2.5 flex justify-between items-center mb-3.5">
               <span className="text-[13px] font-semibold">Change due</span>
-              <span className={`text-lg font-extrabold ${(parseFloat(cashInput) || 0) >= totals.total ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>${change.toFixed(2)}</span>
+              <span className={`text-lg font-extrabold ${(parseFloat(cashInput) || 0) >= total ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>${change.toFixed(2)}</span>
             </div>
           </div>
         )}

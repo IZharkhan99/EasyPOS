@@ -1,19 +1,21 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useCustomers } from '../hooks/useCustomers';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 
 export default function CustomersPage() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, deleteMultipleCustomers, openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast } = useApp();
-  const { currentUser } = useAuth();
+  const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast } = useApp();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, deleteMultipleCustomers, isLoading } = useCustomers();
+  const { profile: currentUser } = useAuth();
   const [form, setForm] = useState({ name: '', phone: '', email: '', tier: 'Regular' });
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
   const filtered = useMemo(() => 
-    customers.filter(c => c.id > 0 && (!filter || c.name.toLowerCase().includes(filter.toLowerCase()) || c.phone.includes(filter) || c.email.toLowerCase().includes(filter.toLowerCase()))),
+    customers.filter(c => (!filter || c.name.toLowerCase().includes(filter.toLowerCase()) || c.phone?.includes(filter) || c.email?.toLowerCase().includes(filter.toLowerCase()))),
     [customers, filter]
   );
 
@@ -46,15 +48,19 @@ export default function CustomersPage() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) { showToast('Enter customer name', 'error'); return; }
-    if (activeModal === 'editCustomer' && modalData) {
-      updateCustomer(modalData.id, form);
-    } else {
-      addCustomer(form);
+    try {
+      if (activeModal === 'editCustomer' && modalData) {
+        await updateCustomer({ id: modalData.id, ...form });
+      } else {
+        await addCustomer(form);
+      }
+      closeModal();
+      setForm({ name: '', phone: '', email: '', tier: 'Regular' });
+    } catch (err) {
+      showToast('Failed to save customer: ' + err.message, 'error');
     }
-    closeModal();
-    setForm({ name: '', phone: '', email: '', tier: 'Regular' });
   };
 
   const openEdit = (c) => {
@@ -74,10 +80,10 @@ export default function CustomersPage() {
 
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'Total Customers', value: filtered.length, color: '#3b82f6' },
-          { label: 'Active Today', value: 3, color: '#22c55e' },
-          { label: 'Loyalty Members', value: filtered.filter(c => c.tier).length, color: '#8b5cf6' },
-          { label: 'Avg Spend', value: '$' + (filtered.filter(c => c.spent).reduce((s, c) => s + c.spent, 0) / Math.max(1, filtered.filter(c => c.spent).length)).toFixed(2), color: '#f97316' },
+          { label: 'Total Customers', value: customers.length, color: '#3b82f6' },
+          { label: 'Active This Month', value: customers.filter(c => (c.total_visits || 0) > 0).length, color: '#22c55e' },
+          { label: 'Loyalty Members', value: customers.filter(c => (c.loyalty_points || 0) > 0).length, color: '#8b5cf6' },
+          { label: 'Avg Spend', value: '$' + (customers.reduce((s, c) => s + (c.total_spent || 0), 0) / Math.max(1, customers.length)).toFixed(2), color: '#f97316' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -127,11 +133,11 @@ export default function CustomersPage() {
                 </td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.phone}</td>
                 <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">{c.email}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.visits}</td>
-                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${c.spent?.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.lastVisit}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.total_visits || 0}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${(c.total_spent || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.last_visit ? new Date(c.last_visit).toLocaleDateString() : 'Never'}</td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${c.tier === 'Platinum' ? 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]' : c.tier === 'Gold' ? 'bg-[rgba(234,179,8,.12)] text-[#eab308]' : c.tier === 'Silver' ? 'bg-[rgba(148,163,184,.12)] text-[#94a3b8]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{c.tier}</span>
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${c.tier === 'Platinum' ? 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]' : c.tier === 'Gold' ? 'bg-[rgba(234,179,8,.12)] text-[#eab308]' : c.tier === 'Silver' ? 'bg-[rgba(148,163,184,.12)] text-[#94a3b8]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{c.tier || 'Regular'}</span>
                   </td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme flex gap-1">
                     <button onClick={() => openEdit(c)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
