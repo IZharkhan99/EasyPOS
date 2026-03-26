@@ -1014,7 +1014,7 @@ export function AppProvider({ children }) {
     // Purchase Orders
     purchaseOrders, addPurchaseOrder, updatePOStatus,
     // Bulk
-    deleteMultipleProducts, removeMultipleStaff, deleteMultipleCustomers,
+    deleteMultipleProducts, removeMultipleStaff,
     // Reporting
     reportRange, setReportRange, customRange, setCustomRange, getFilteredData, getRangeDates
   };
