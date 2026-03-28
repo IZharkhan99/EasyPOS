@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuditLogs } from '../hooks/useAuditLogs';
 import Pagination from '../components/Pagination';
+import createLogger from '../utils/logger';
+
+const logger = createLogger('AuditLogPage');
 
 export default function AuditLogPage() {
   const { exportModuleAsCSV } = useApp();
@@ -12,10 +15,11 @@ export default function AuditLogPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  const filtered = auditLogs.filter(log => {
+  const filtered = (auditLogs || []).filter(log => {
     const matchSearch = log.action.toLowerCase().includes(filter.toLowerCase()) ||
       log.module.toLowerCase().includes(filter.toLowerCase()) ||
       log.details.toLowerCase().includes(filter.toLowerCase()) ||
+      log.allValues?.toString().toLowerCase().includes(filter.toLowerCase()) ||
       log.user.toLowerCase().includes(filter.toLowerCase());
 
     const logDate = new Date(log.timestamp);
@@ -60,14 +64,20 @@ export default function AuditLogPage() {
               )}
             </div>
             <div className="flex-1" />
-            <button onClick={() => exportModuleAsCSV('audit-logs', auditLogs)} className="bg-theme-elevated border border-theme px-3.5 py-2 rounded-lg text-[12.5px] font-semibold text-theme2 cursor-pointer hover:bg-theme-hover flex items-center gap-2 transition-all border-none">
+            <button 
+              onClick={() => {
+                logger.info('Exporting audit logs as CSV');
+                exportModuleAsCSV('audit-logs', auditLogs);
+              }} 
+              className="bg-theme-elevated border border-theme px-3.5 py-2 rounded-lg text-[12.5px] font-semibold text-theme2 cursor-pointer hover:bg-theme-hover flex items-center gap-2 transition-all border-none"
+            >
               <svg viewBox="0 0 24 24" className="w-[14px] h-[14px] stroke-current fill-none" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
               Export
             </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-min-h-[400px]">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-theme-elevated/50">
@@ -77,32 +87,44 @@ export default function AuditLogPage() {
               </tr>
             </thead>
             <tbody>
-              {paginatedData.map((log, i) => (
-                <tr key={i} className="hover:bg-theme-elevated/20 transition-colors">
-                  <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme2 font-medium">
-                    {new Date(log.timestamp).toLocaleString()}
-                  </td>
-                  <td className="px-5 py-3 text-[12.5px] border-b border-theme font-semibold text-theme">
-                    {log.user}
-                  </td>
-                  <td className="px-5 py-3 text-[12.5px] border-b border-theme">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${log.action === 'CREATE' ? 'bg-green-500/10 text-green-500' :
-                      log.action === 'UPDATE' ? 'bg-blue-500/10 text-blue-500' :
-                        log.action === 'DELETE' ? 'bg-red-500/10 text-red-500' :
-                          'bg-gray-500/10 text-gray-500'
-                      }`}>
-                      {log.action}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme2">
-                    {log.module}
-                  </td>
-                  <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme3 italic">
-                    {log.details}
-                  </td>
-                </tr>
-              ))}
-              {paginatedData.length === 0 && (
+              {isLoading ? (
+                [...Array(5)].map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    {[...Array(5)].map((__, j) => (
+                      <td key={j} className="px-5 py-4 border-b border-theme">
+                        <div className="h-4 bg-theme-elevated rounded w-3/4"></div>
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                paginatedData.map((log, i) => (
+                  <tr key={i} className="hover:bg-theme-elevated/20 transition-colors">
+                    <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme2 font-medium">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </td>
+                    <td className="px-5 py-3 text-[12.5px] border-b border-theme font-semibold text-theme">
+                      {log.user}
+                    </td>
+                    <td className="px-5 py-3 text-[12.5px] border-b border-theme">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${log.action === 'CREATE' ? 'bg-green-500/10 text-green-500' :
+                        log.action === 'UPDATE' ? 'bg-blue-500/10 text-blue-500' :
+                          log.action === 'DELETE' ? 'bg-red-500/10 text-red-500' :
+                            'bg-[#3b82f61a] text-[#3b82f6]'
+                        }`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme2">
+                      {log.module}
+                    </td>
+                    <td className="px-5 py-3 text-[12.5px] border-b border-theme text-theme3 italic">
+                      {log.details}
+                    </td>
+                  </tr>
+                ))
+              )}
+              {!isLoading && paginatedData.length === 0 && (
                 <tr>
                   <td colSpan="5" className="px-5 py-10 text-center text-theme3 text-[13px]">
                     No audit logs found matching your search.

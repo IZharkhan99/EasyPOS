@@ -5,6 +5,11 @@ import { useOrders } from '../hooks/useOrders';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+import { DEFAULTS } from '../utils/constants';
+
+const logger = createLogger('ShiftPage');
 
 export default function ShiftPage() {
   const { openModal, closeModal, activeModal, showToast } = useApp();
@@ -13,13 +18,13 @@ export default function ShiftPage() {
   const { orders } = useOrders();
 
   const [closingCash, setClosingCash] = useState('');
-  const [floatInput, setFloatInput] = useState('200');
+  const [floatInput, setFloatInput] = useState(DEFAULTS.OPENING_FLOAT);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const shiftOpen = !!activeShift;
-  
-  const currentShiftOrders = useMemo(() => 
+
+  const currentShiftOrders = useMemo(() =>
     (orders || []).filter(o => o.shift_id === activeShift?.id),
     [orders, activeShift]
   );
@@ -45,8 +50,8 @@ export default function ShiftPage() {
       if (shiftOpen) {
         const cash = parseFloat(closingCash) || 0;
         const expected = (activeShift.opening_float || 0) + stats.cashRev;
-        await closeShift({ 
-          id: activeShift.id, 
+        await closeShift({
+          id: activeShift.id,
           data: {
             closing_cash: cash,
             expected_cash: expected,
@@ -60,16 +65,18 @@ export default function ShiftPage() {
           }
         });
       } else {
-        await openShift({ 
-          opening_float: parseFloat(floatInput) || 200,
+        await openShift({
+          opening_float: parseFloat(floatInput) || DEFAULTS.OPENING_FLOAT || 200,
           status: 'open',
           opened_at: new Date().toISOString(),
         });
       }
       closeModal();
       setClosingCash('');
+      logger.info(shiftOpen ? 'Shift closed successfully' : 'Shift opened successfully', { shiftId: activeShift?.id || 'new' });
       showToast(shiftOpen ? 'Shift closed successfully' : 'Shift opened successfully', 'success');
     } catch (err) {
+      logger.error('Shift action failed', { error: err.message, action: shiftOpen ? 'close' : 'open' });
       showToast('Action failed: ' + err.message, 'error');
     }
   };
@@ -101,18 +108,18 @@ export default function ShiftPage() {
           <div class="flex"><span>Duration:</span><span>${report.duration}</span></div>
           <div class="border-top mt-2 mb-2"></div>
           <div class="flex"><span>Total Orders:</span><span>${report.ordersCount}</span></div>
-          <div class="flex font-bold"><span>REVENUE:</span><span>$${report.revenue.toFixed(2)}</span></div>
-          <div class="flex"><span>Total Tax:</span><span>$${report.tax.toFixed(2)}</span></div>
-          <div class="flex"><span>Discounts:</span><span>$${report.discount.toFixed(2)}</span></div>
+          <div class="flex font-bold"><span>REVENUE:</span><span>${formatCurrency(report.revenue)}</span></div>
+          <div class="flex"><span>Total Tax:</span><span>${formatCurrency(report.tax || 0)}</span></div>
+          <div class="flex"><span>Discounts:</span><span>${formatCurrency(report.discount || 0)}</span></div>
           <div class="border-top mt-2 mb-2"></div>
-          <div class="flex"><span>Cash Sales:</span><span>$${report.cashSales.toFixed(2)}</span></div>
-          <div class="flex"><span>Card Sales:</span><span>$${report.cardSales.toFixed(2)}</span></div>
+          <div class="flex"><span>Cash Sales:</span><span>${formatCurrency(report.cashSales)}</span></div>
+          <div class="flex"><span>Card Sales:</span><span>${formatCurrency(report.cardSales)}</span></div>
           <div class="border-top mt-2 mb-2"></div>
-          <div class="flex"><span>Opening Float:</span><span>$${report.float.toFixed(2)}</span></div>
-          <div class="flex"><span>Expected Cash:</span><span>$${(report.float + report.cashSales).toFixed(2)}</span></div>
-          <div class="flex"><span>Actual Cash:</span><span>$${report.closingCash.toFixed(2)}</span></div>
+          <div class="flex"><span>Opening Float:</span><span>${formatCurrency(report.float)}</span></div>
+          <div class="flex"><span>Expected Cash:</span><span>${formatCurrency(report.float + report.cashSales)}</span></div>
+          <div class="flex"><span>Actual Cash:</span><span>${formatCurrency(report.closingCash)}</span></div>
           <div class="flex font-bold" style="color: ${report.diff < 0 ? '#ff0000' : '#000'}">
-            <span>DIFF:</span><span>${report.diff >= 0 ? '+' : ''}$${report.diff.toFixed(2)}</span>
+            <span>DIFF:</span><span>${report.diff >= 0 ? '+' : ''}${formatCurrency(Math.abs(report.diff))}</span>
           </div>
           <div class="border-top mt-2 text-center" style="font-size: 10px;">Z-Report Printed: ${new Date().toLocaleString()}</div>
         </body>
@@ -141,8 +148,8 @@ export default function ShiftPage() {
           { label: 'Status', value: shiftOpen ? 'Active' : 'Closed', color: shiftOpen ? '#22c55e' : '#ef4444' },
           { label: 'Started', value: activeShift ? new Date(activeShift.opened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--', color: '#3b82f6' },
           { label: 'Orders', value: stats.cnt, color: '#8b5cf6' },
-          { label: 'Revenue', value: '$' + stats.rev.toFixed(2), color: '#3b82f6' },
-          { label: 'Opening Float', value: '$' + (activeShift?.opening_float || 0).toFixed(2), color: '#f97316' },
+          { label: 'Revenue', value: formatCurrency(stats.rev), color: '#3b82f6' },
+          { label: 'Opening Float', value: formatCurrency(activeShift?.opening_float || 0), color: '#f97316' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -155,15 +162,15 @@ export default function ShiftPage() {
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-theme-surface border border-theme rounded-xl p-3.5">
           <div className="text-[13px] font-bold mb-2">Cash Breakdown</div>
-          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Cash Sales</span><span className="font-bold text-[#22c55e]">${stats.cashRev.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Card Sales</span><span className="font-bold text-[#3b82f6]">${stats.cardRev.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[13px] py-1.5 font-bold mt-1"><span>Total</span><span>${stats.rev.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Cash Sales</span><span className="font-bold text-[#22c55e]">{formatCurrency(stats.cashRev)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Card Sales</span><span className="font-bold text-[#3b82f6]">{formatCurrency(stats.cardRev)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 font-bold mt-1"><span>Total</span><span>{formatCurrency(stats.rev)}</span></div>
         </div>
         <div className="bg-theme-surface border border-theme rounded-xl p-3.5">
           <div className="text-[13px] font-bold mb-2">Shift Info</div>
           <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Cashier</span><span className="font-semibold">{activeShift?.profiles?.name || currentUser?.name || 'Staff'}</span></div>
-          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Float</span><span className="font-semibold">${(activeShift?.opening_float || 0).toFixed(2)}</span></div>
-          <div className="flex justify-between text-[13px] py-1.5"><span className="text-theme2">Expected Cash</span><span className="font-bold text-[#22c55e]">${((activeShift?.opening_float || 0) + stats.cashRev).toFixed(2)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5 border-b border-theme"><span className="text-theme2">Float</span><span className="font-semibold">{formatCurrency(activeShift?.opening_float || 0)}</span></div>
+          <div className="flex justify-between text-[13px] py-1.5"><span className="text-theme2">Expected Cash</span><span className="font-bold text-[#22c55e]">{formatCurrency((activeShift?.opening_float || 0) + stats.cashRev)}</span></div>
         </div>
       </div>
 
@@ -187,11 +194,11 @@ export default function ShiftPage() {
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.closed_at ? new Date(s.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{Math.round((new Date(s.closed_at) - new Date(s.opened_at)) / 60000)}m</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.orders_count || 0}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme font-bold text-[#3b82f6]">${(s.total_revenue || 0).toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(s.opening_float || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme font-bold text-[#3b82f6]">{formatCurrency(s.total_revenue || 0)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{formatCurrency(s.opening_float || 0)}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <button onClick={() => printZReport(s)} className="bg-theme-elevated border border-theme px-2 py-1 rounded-md text-[10px] text-theme flex items-center gap-1 hover:bg-theme-hover cursor-pointer">
-                    <svg viewBox="0 0 24 24" className="w-[11px] h-[11px] stroke-current fill-none" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    <svg viewBox="0 0 24 24" className="w-[11px] h-[11px] stroke-current fill-none" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
                     Z-Report
                   </button>
                 </td>
@@ -213,9 +220,9 @@ export default function ShiftPage() {
       <Modal id="shift" title={shiftOpen ? 'Close Shift' : 'Open New Shift'} subtitle={shiftOpen ? 'Review your shift before closing' : 'Enter opening float to start a new shift'}>
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Orders</div><div className="text-lg font-extrabold">{stats.cnt}</div></div>
-          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Revenue</div><div className="text-lg font-extrabold text-[#3b82f6]">${stats.rev.toFixed(2)}</div></div>
-          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Cash</div><div className="text-lg font-extrabold text-[#22c55e]">${stats.cashRev.toFixed(2)}</div></div>
-          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Card</div><div className="text-lg font-extrabold text-[#8b5cf6]">${stats.cardRev.toFixed(2)}</div></div>
+          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Revenue</div><div className="text-lg font-extrabold text-[#3b82f6]">{formatCurrency(stats.rev)}</div></div>
+          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Cash</div><div className="text-lg font-extrabold text-[#22c55e]">{formatCurrency(stats.cashRev)}</div></div>
+          <div className="bg-theme-elevated rounded-lg p-3 text-center"><div className="text-[11px] text-theme3 mb-1">Card</div><div className="text-lg font-extrabold text-[#8b5cf6]">{formatCurrency(stats.cardRev)}</div></div>
         </div>
         {shiftOpen ? (
           <div className="mb-4">

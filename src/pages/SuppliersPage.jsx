@@ -4,6 +4,9 @@ import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
+import createLogger from '../utils/logger';
+
+const logger = createLogger('SuppliersPage');
 
 export default function SuppliersPage() {
   const { openModal, closeModal, activeModal, modalData, showToast } = useApp();
@@ -37,14 +40,41 @@ export default function SuppliersPage() {
     openModal('addSupplier');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (activeModal === 'addSupplier') {
-      addSupplier(formData);
-    } else {
-      updateSupplier(modalData.id, formData);
+    try {
+      const dbData = {
+        ...formData,
+        contact_person: formData.contact // Map to schema field
+      };
+
+      if (activeModal === 'addSupplier') {
+        logger.info('Adding new supplier', dbData);
+        await addSupplier(dbData);
+        showToast('Supplier added successfully', 'success');
+      } else {
+        logger.info('Updating supplier', { id: modalData.id, dbData });
+        await updateSupplier(modalData.id, dbData);
+        showToast('Supplier updated successfully', 'success');
+      }
+      closeModal();
+    } catch (err) {
+      logger.error('Supplier operation failed', { error: err.message, mode: activeModal });
+      showToast('Action failed: ' + err.message, 'error');
     }
-    closeModal();
+  };
+
+  const handleDelete = async (s) => {
+    if (confirm(`Are you sure you want to delete ${s.name}?`)) {
+      try {
+        logger.info('Deleting supplier', { id: s.id, name: s.name });
+        await deleteSupplier(s.id);
+        showToast('Supplier deleted', 'success');
+      } catch (err) {
+        logger.error('Failed to delete supplier', { error: err.message, id: s.id });
+        showToast('Delete failed: ' + err.message, 'error');
+      }
+    }
   };
 
   return (
@@ -77,27 +107,42 @@ export default function SuppliersPage() {
             </tr>
           </thead>
           <tbody>
-            {paginatedData.map(s => (
-              <tr key={s.id} className="hover:bg-theme-hover transition-colors">
-                <td className="px-4 py-3 text-[13px] border-b border-theme font-semibold text-theme">{s.name}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.contact}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.phone}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.email}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-theme-elevated border border-theme text-theme3">{s.category}</span>
-                </td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleEdit(s)} className="p-1.5 rounded-md hover:bg-[#3b82f6]/10 text-theme3 hover:text-[#3b82f6] border-none bg-transparent cursor-pointer">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button onClick={() => { if(confirm('Delete supplier?')) deleteSupplier(s.id); }} className="p-1.5 rounded-md hover:bg-[#ef4444]/10 text-theme3 hover:text-[#ef4444] border-none bg-transparent cursor-pointer">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  {[...Array(6)].map((__, j) => (
+                    <td key={j} className="px-4 py-4 border-b border-theme">
+                      <div className="h-4 bg-theme-elevated rounded w-3/4"></div>
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              paginatedData.map(s => (
+                <tr key={s.id} className="hover:bg-theme-hover transition-colors">
+                  <td className="px-4 py-3 text-[13px] border-b border-theme font-semibold text-theme">{s.name}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.contact}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.phone}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{s.email}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-theme-elevated border border-theme text-theme3">{s.category}</span>
+                  </td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleEdit(s)} className="p-1.5 rounded-md hover:bg-[#3b82f6]/10 text-theme3 hover:text-[#3b82f6] border-none bg-transparent cursor-pointer transition-all">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button onClick={() => handleDelete(s)} className="p-1.5 rounded-md hover:bg-[#ef4444]/10 text-theme3 hover:text-[#ef4444] border-none bg-transparent cursor-pointer transition-all">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+            {!isLoading && paginatedData.length === 0 && (
+              <tr><td colSpan="6" className="p-10 text-center text-theme3 italic">No suppliers found</td></tr>
+            )}
           </tbody>
         </table>
       </div>

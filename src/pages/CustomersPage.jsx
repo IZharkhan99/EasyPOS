@@ -4,12 +4,16 @@ import { useAuth } from '../hooks/useAuth';
 import { useCustomers } from '../hooks/useCustomers';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('CustomersPage');
 
 export default function CustomersPage() {
   const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast } = useApp();
   const { customers, addCustomer, updateCustomer, deleteCustomer, deleteMultipleCustomers, isLoading } = useCustomers();
   const { profile: currentUser } = useAuth();
-  const [form, setForm] = useState({ name: '', phone: '', email: '', tier: 'Regular' });
+   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', tier: 'Bronze' });
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -41,10 +45,17 @@ export default function CustomersPage() {
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (confirm(`Are you sure you want to delete ${selectedIds.length} customers?`)) {
-      deleteMultipleCustomers(selectedIds);
-      setSelectedIds([]);
+      try {
+        logger.info('Bulk deleting customers', { ids: selectedIds });
+        await deleteMultipleCustomers(selectedIds);
+        showToast(`${selectedIds.length} customers deleted successfully`, 'success');
+        setSelectedIds([]);
+      } catch (err) {
+        logger.error('Bulk delete failed', { error: err.message, ids: selectedIds });
+        showToast('Failed to delete customers: ' + err.message, 'error');
+      }
     }
   };
 
@@ -52,19 +63,24 @@ export default function CustomersPage() {
     if (!form.name.trim()) { showToast('Enter customer name', 'error'); return; }
     try {
       if (activeModal === 'editCustomer' && modalData) {
+        logger.info(`Updating customer: ${modalData.id}`, form);
         await updateCustomer({ id: modalData.id, ...form });
+        showToast('Customer updated successfully', 'success');
       } else {
+        logger.info('Adding new customer', form);
         await addCustomer(form);
+        showToast('Customer added successfully', 'success');
       }
       closeModal();
-      setForm({ name: '', phone: '', email: '', tier: 'Regular' });
+      setForm({ name: '', phone: '', email: '', address: '', tier: 'Bronze' });
     } catch (err) {
-      showToast('Failed to save customer: ' + err.message, 'error');
+      logger.error('Failed to save customer', { error: err.message, form });
+      showToast('Error saving customer: ' + err.message, 'error');
     }
   };
 
   const openEdit = (c) => {
-    setForm({ name: c.name, phone: c.phone, email: c.email, tier: c.tier });
+    setForm({ name: c.name, phone: c.phone, email: c.email, address: c.address || '', tier: c.tier || 'Bronze' });
     openModal('editCustomer', c);
   };
 
@@ -83,7 +99,7 @@ export default function CustomersPage() {
           { label: 'Total Customers', value: customers.length, color: '#3b82f6' },
           { label: 'Active This Month', value: customers.filter(c => (c.total_visits || 0) > 0).length, color: '#22c55e' },
           { label: 'Loyalty Members', value: customers.filter(c => (c.loyalty_points || 0) > 0).length, color: '#8b5cf6' },
-          { label: 'Avg Spend', value: '$' + (customers.reduce((s, c) => s + (c.total_spent || 0), 0) / Math.max(1, customers.length)).toFixed(2), color: '#f97316' },
+          { label: 'Avg Spend', value: formatCurrency(customers.reduce((s, c) => s + (c.total_spent || 0), 0) / Math.max(1, customers.length)), color: '#f97316' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -114,7 +130,7 @@ export default function CustomersPage() {
               <th className="px-4 py-2.5 bg-theme-elevated border-b border-theme w-10">
                 <input type="checkbox" onChange={toggleSelectAll} checked={paginatedData.length > 0 && paginatedData.every(c => selectedIds.includes(c.id))} className="cursor-pointer" />
               </th>
-              {['Customer', 'Phone', 'Email', 'Visits', 'Total Spent', 'Last Visit', 'Tier', ''].map(h => (
+               {['Customer', 'Phone', 'Email', 'Address', 'Visits', 'Total Spent', 'Last Visit', 'Tier', ''].map(h => (
                 <th key={h} className="px-4 py-2.5 text-[10.5px] text-theme3 font-bold text-left uppercase tracking-[.5px] bg-theme-elevated border-b border-theme">{h}</th>
               ))}
             </tr>
@@ -131,18 +147,30 @@ export default function CustomersPage() {
                     <strong>{c.name}</strong>
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.phone}</td>
+                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.phone}</td>
                 <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">{c.email}</td>
+                <td className="px-4 py-2.5 text-[13px] text-theme2 border-b border-theme truncate max-w-[150px]" title={c.address}>{c.address || '-'}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.total_visits || 0}</td>
-                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${(c.total_spent || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">{formatCurrency(c.total_spent || 0)}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{c.last_visit ? new Date(c.last_visit).toLocaleDateString() : 'Never'}</td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${c.tier === 'Platinum' ? 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]' : c.tier === 'Gold' ? 'bg-[rgba(234,179,8,.12)] text-[#eab308]' : c.tier === 'Silver' ? 'bg-[rgba(148,163,184,.12)] text-[#94a3b8]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{c.tier || 'Regular'}</span>
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${c.tier === 'Platinum' ? 'bg-[rgba(139,92,246,.12)] text-[#8b5cf6]' : c.tier === 'Gold' ? 'bg-[rgba(234,179,8,.12)] text-[#eab308]' : c.tier === 'Silver' ? 'bg-[rgba(148,163,184,.12)] text-[#94a3b8]' : 'bg-[rgba(249,115,22,.12)] text-[#f97316]'}`}>{c.tier || 'Bronze'}</span>
                   </td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme flex gap-1">
                     <button onClick={() => openEdit(c)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
                     {currentUser?.role !== 'cashier' && (
-                      <button onClick={() => deleteCustomer(c.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-[#ef4444] cursor-pointer hover:bg-[rgba(239,68,68,.12)]">Delete</button>
+                      <button onClick={async () => {
+                        if (confirm('Delete this customer?')) {
+                          try {
+                            logger.info(`Deleting customer: ${c.id}`);
+                            await deleteCustomer(c.id);
+                            showToast('Customer deleted', 'success');
+                          } catch (err) {
+                            logger.error(`Failed to delete customer ${c.id}`, { error: err.message });
+                            showToast('Delete failed: ' + err.message, 'error');
+                          }
+                        }
+                      }} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-[#ef4444] cursor-pointer hover:bg-[rgba(239,68,68,.12)]">Delete</button>
                     )}
                   </td>
                 </tr>
@@ -205,10 +233,19 @@ function CustomerForm({ form, setForm }) {
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]" />
         </div>
         <div className="col-span-2">
+          <Label title="Full Address" />
+          <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} 
+            rows="2"
+            className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6] resize-none" />
+        </div>
+        <div className="col-span-2">
           <Label title="Customer Tier" sub="Loyalty" />
           <select value={form.tier} onChange={e => setForm({...form, tier: e.target.value})} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]">
-            <option>Regular</option><option>Silver</option><option>Gold</option><option>Platinum</option>
+            <option value="Bronze">Bronze (Standard)</option>
+            <option value="Silver">Silver (Preferred)</option>
+            <option value="Gold">Gold (VIP)</option>
+            <option value="Platinum">Platinum (Elite)</option>
           </select>
         </div>
       </div>

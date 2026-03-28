@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { getDAL } from '../services/dal';
+import createLogger from '../utils/logger';
 
 const dal = getDAL();
+const logger = createLogger('OnboardingPage');
 
 export default function OnboardingPage() {
   const [email, setEmail] = useState('');
@@ -18,10 +20,13 @@ export default function OnboardingPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      logger.info('User attempting signup', { email, businessName });
       await dal.createBusinessAndProfile(email, password, businessName, fullName);
+      logger.info('Signup successful', { email });
       showToast('Business account created! Please sign in.', 'success');
       navigate('/login');
     } catch (err) {
+      logger.error('Signup failed', { error: err.message, email });
       showToast(err.message || 'Signup failed', 'error');
     } finally {
       setLoading(false);

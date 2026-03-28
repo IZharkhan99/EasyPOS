@@ -1,4 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
+import createLogger from '../utils/logger';
+
+const logger = createLogger('useCart');
 
 /**
  * useCart: Purely local state hook for managing the POS cart.
@@ -15,6 +18,16 @@ export function useCart() {
   const [discountType, setDiscountType] = useState('percent');
   const [heldOrders, setHeldOrders] = useState([]);
 
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.qty), 0), [cart]);
+  
+  const discountAmount = useMemo(() => {
+    if (discountType === 'percent') return (subtotal * discount) / 100;
+    return discount;
+  }, [subtotal, discount, discountType]);
+
+  const total = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
+  const itemCount = useMemo(() => cart.reduce((sum, item) => sum + item.qty, 0), [cart]);
+
   const saveCart = useCallback((newCart) => {
     setCart(newCart);
     localStorage.setItem('active_cart', JSON.stringify(newCart));
@@ -22,6 +35,7 @@ export function useCart() {
 
   const holdOrder = useCallback(() => {
     if (!cart.length) return;
+    logger.info('Holding current order', { itemCount: cart.length, subtotal });
     setHeldOrders(prev => [...prev, { 
       items: [...cart], 
       customer: currentCustomer, 
@@ -30,7 +44,7 @@ export function useCart() {
     }]);
     setCart([]);
     localStorage.removeItem('active_cart');
-  }, [cart, currentCustomer, discount, discountType]);
+  }, [cart, currentCustomer, discount, discountType, subtotal]);
 
   const restoreHeldOrder = useCallback(() => {
     if (heldOrders.length === 0) return;
@@ -44,6 +58,7 @@ export function useCart() {
   }, [heldOrders]);
 
   const addToCart = useCallback((product) => {
+    logger.info('Adding product to cart', { productId: product.id, productName: product.name });
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       let newCart;
@@ -69,20 +84,11 @@ export function useCart() {
   }, [cart, saveCart]);
 
   const clearCart = useCallback(() => {
+    logger.info('Clearing cart completely');
     saveCart([]);
     setCurrentCustomer(null);
     setDiscount(0);
   }, [saveCart]);
-
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.qty), 0), [cart]);
-  
-  const discountAmount = useMemo(() => {
-    if (discountType === 'percent') return (subtotal * discount) / 100;
-    return discount;
-  }, [subtotal, discount, discountType]);
-
-  const total = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
-  const itemCount = useMemo(() => cart.reduce((sum, item) => sum + item.qty, 0), [cart]);
 
   return {
     cart,

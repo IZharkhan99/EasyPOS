@@ -8,6 +8,11 @@ import { useCart } from '../hooks/useCart';
 import { useShifts } from '../hooks/useShifts';
 import { useSettings } from '../hooks/useSettings';
 import Modal from '../components/Modal';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+import { DEFAULTS } from '../utils/constants';
+
+const logger = createLogger('POSPage');
 
 export default function POSPage() {
   const { openModal, closeModal, activeModal, modalData, showToast, printReceipt, printInvoice } = useApp();
@@ -23,6 +28,8 @@ export default function POSPage() {
     discountType, setDiscountType, subtotal, discountAmount, total, itemCount,
     heldOrders, holdOrder, restoreHeldOrder
   } = useCart();
+  
+  const taxRate = profile?.tax_rate ? parseFloat(profile.tax_rate) / 100 : DEFAULTS.TAX_RATE;
 
   const [search, setSearch] = useState('');
   const [activeCat, setActiveCat] = useState('All');
@@ -54,7 +61,10 @@ export default function POSPage() {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     
-    if (posSettings.scanSound) console.log('🔊 Scanner Beep: Product added');
+    logger.info(`Adding product to cart: ${product.name}`, { productId, price: product.price });
+    if (posSettings.scanSound) {
+      // Logic for scan sound
+    }
     cartAdd(product);
   };
 
@@ -78,27 +88,33 @@ export default function POSPage() {
     }
 
     try {
+      logger.info('Starting payment process', { method, total, customer: currentCustomer?.name });
+      const taxAmount = total * taxRate;
+      
       const orderData = {
         customer_id: currentCustomer?.id,
         total: total,
         subtotal: subtotal,
         discount_amount: discountAmount,
-        tax_amount: total * 0.08, // Hardcoded for now, should be from settings
+        tax_amount: taxAmount,
         payment_method: method,
         status: 'completed',
         shift_id: activeShift?.id,
-        user_id: profile.id, // DB uses user_id as FK to profiles
+        user_id: profile.id,
       };
 
       const itemsData = cart.map(item => ({
         product_id: item.id,
         name: item.name,
+        sku: item.sku || '',
         qty: item.qty,
         unit_price: item.price,
+        cost_price: item.cost || 0,
         total: item.price * item.qty,
       }));
 
       const newOrder = await createOrder({ orderData, itemsData });
+      logger.info('Order created successfully', { orderId: newOrder.id });
       
       // Map to legacy format for receipt/invoice components
       const legacyOrder = {
@@ -106,15 +122,17 @@ export default function POSPage() {
         customer: currentCustomer?.name || 'Walk-in Customer',
         items: cart,
         sub: subtotal,
-        tax: total * 0.08,
+        tax_amount: taxAmount,
         total: total,
         createdAt: new Date(),
       };
 
       clearCart();
       closeModal();
+      showToast('Payment successful!', 'success');
       openModal('receipt', legacyOrder);
     } catch (err) {
+      logger.error('Order processing failed', { error: err.message, cart });
       showToast('Failed to process order: ' + err.message, 'error');
     }
   };
@@ -160,11 +178,11 @@ export default function POSPage() {
           {filtered.map(p => (
             <div key={p.id} onClick={() => addToCart(p.id)}
               className={`bg-theme-elevated border border-theme rounded-[11px] p-3 cursor-pointer transition-all select-none relative overflow-hidden hover:border-theme2 hover:-translate-y-px active:scale-95 ${p.stock === 0 ? 'opacity-40 pointer-events-none' : ''}`}>
-              <span className="text-[26px] mb-1.5 block">{p.emoji}</span>
+              <span className="text-[26px] mb-1.5 block">{p.emoji || DEFAULTS.productEmoji}</span>
               <div className="text-xs font-semibold text-theme mb-0.5 leading-tight">{p.name}</div>
-              <div className="text-[13.5px] font-extrabold text-[#3b82f6]">${p.price.toFixed(2)}</div>
+              <div className="text-[13.5px] font-extrabold text-[#3b82f6]">{formatCurrency(p.price)}</div>
               <div className="text-[10px] text-theme3 mt-0.5">
-                {p.stock === 0 ? 'Out of stock' : p.stock < p.reorder ? `⚠ Low: ${p.stock}` : p.stock + ' in stock'}
+                {p.stock === 0 ? 'Out of stock' : p.stock < (p.reorder_level || 5) ? `⚠ Low: ${p.stock}` : p.stock + ' in stock'}
               </div>
               {inCart[p.id] && (
                 <div className="absolute top-1.5 right-1.5 bg-[#3b82f6] text-white text-[10px] font-extrabold w-[18px] h-[18px] rounded-full flex items-center justify-center">{inCart[p.id]}</div>
@@ -199,7 +217,7 @@ export default function POSPage() {
               <span className="text-lg flex-shrink-0">{item.emoji}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</div>
-                <div className="text-[11px] text-theme3">${item.price.toFixed(2)} × {item.qty} = ${(item.price * item.qty).toFixed(2)}</div>
+                <div className="text-[11px] text-theme3">{formatCurrency(item.price)} × {item.qty} = {formatCurrency(item.price * item.qty)}</div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-5 h-5 rounded-[5px] bg-theme-hover border-none text-theme cursor-pointer text-[13px] flex items-center justify-center hover:bg-theme-elevated">−</button>
@@ -218,16 +236,16 @@ export default function POSPage() {
 
         {/* Cart Summary */}
         <div className="px-3.5 py-2.5 border-t border-theme flex-shrink-0">
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="flex gap-1.5 my-1.5">
             <input type="number" placeholder="Discount %" min="0" max="100" value={discount || ''} onChange={e => setDiscount(parseFloat(e.target.value) || 0)}
               className="flex-1 bg-theme-elevated border border-theme2 rounded-[7px] px-2.5 py-1.5 text-xs text-theme outline-none focus:border-[#3b82f6]" />
             <button onClick={() => { if (discount >= 0 && discount <= 100) showToast(`${discount}% discount applied`, 'success'); else showToast('Enter discount 0–100%', 'error'); }}
               className="bg-theme-elevated border border-theme2 rounded-[7px] px-2.5 py-1.5 text-[11.5px] text-theme2 cursor-pointer hover:bg-theme-hover">Apply</button>
           </div>
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Discount</span><span className="text-[#22c55e]">-${discountAmount.toFixed(2)}</span></div>
-          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Tax (8%)</span><span>${(total * 0.08).toFixed(2)}</span></div>
-          <div className="flex justify-between text-[15px] font-extrabold mt-[7px] pt-[7px] border-t border-theme"><span>Total</span><span>${total.toFixed(2)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Discount</span><span className="text-[#22c55e]">-{formatCurrency(discountAmount)}</span></div>
+          <div className="flex justify-between text-[12.5px] text-theme2 mb-1"><span>Tax ({taxRate * 100}%)</span><span>{formatCurrency(total * taxRate)}</span></div>
+          <div className="flex justify-between text-[15px] font-extrabold mt-[7px] pt-[7px] border-t border-theme"><span>Total</span><span>{formatCurrency(total)}</span></div>
           <div className="h-2" />
 
           {/* Payment Methods */}
@@ -258,7 +276,7 @@ export default function POSPage() {
 
       {/* CHECKOUT MODAL */}
       <Modal id="checkout" title="Complete Payment" subtitle={`${cart.length} items · ${currentCustomer?.name || 'Walk-in'}`}>
-        <div className="text-[30px] font-black text-[#3b82f6] text-center my-3.5 tracking-[-1px]">${total.toFixed(2)}</div>
+        <div className="text-[30px] font-black text-[#3b82f6] text-center my-3.5 tracking-[-1px]">{formatCurrency(total)}</div>
         <div className="grid grid-cols-3 gap-[7px] mb-4">
           {['cash', 'card', 'qr'].map(m => (
             <button key={m} onClick={() => setSelectedPay(m)}
@@ -272,7 +290,7 @@ export default function POSPage() {
             <div className="flex gap-[7px] mb-2.5">
               {[5, 10, 20, 50, 100].map(v => (
                 <button key={v} onClick={() => setCashInput(String(Math.max(v, Math.ceil(total))))}
-                  className="flex-1 py-2 rounded-[7px] border border-theme2 bg-theme-elevated text-theme2 cursor-pointer text-[12.5px] font-semibold hover:bg-theme-hover hover:text-theme">${v}</button>
+                  className="flex-1 py-2 rounded-[7px] border border-theme2 bg-theme-elevated text-theme2 cursor-pointer text-[12.5px] font-semibold hover:bg-theme-hover hover:text-theme">{formatCurrency(v)}</button>
               ))}
             </div>
             <div className="mb-3">
@@ -282,7 +300,7 @@ export default function POSPage() {
             </div>
             <div className="bg-[rgba(34,197,94,.12)] border border-[rgba(34,197,94,.25)] rounded-[9px] px-3 py-2.5 flex justify-between items-center mb-3.5">
               <span className="text-[13px] font-semibold">Change due</span>
-              <span className={`text-lg font-extrabold ${(parseFloat(cashInput) || 0) >= total ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>${change.toFixed(2)}</span>
+              <span className={`text-lg font-extrabold ${(parseFloat(cashInput) || 0) >= total ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{formatCurrency(change)}</span>
             </div>
           </div>
         )}
@@ -306,14 +324,17 @@ export default function POSPage() {
               {modalData.items.map((item, idx) => (
                 <div key={idx} className="flex justify-between italic">
                   <span>{item.qty} × {item.name}</span>
-                  <span>${(item.price * item.qty).toFixed(2)}</span>
+                  <span>{formatCurrency(item.price * item.qty)}</span>
                 </div>
               ))}
             </div>
             <div className="r-divider" />
-            <div className="flex justify-between mt-2 font-bold mb-1"><span>Subtotal</span><span>${modalData.sub.toFixed(2)}</span></div>
-            <div className="flex justify-between text-theme2"><span>Tax (8%)</span><span>${modalData.tax.toFixed(2)}</span></div>
-            <div className="flex justify-between mt-1 text-[14px] font-extrabold text-[#3b82f6]"><span>Total</span><span>${modalData.total.toFixed(2)}</span></div>
+            <div className="flex justify-between mt-2 font-bold mb-1"><span>Subtotal</span><span>{formatCurrency(modalData.sub)}</span></div>
+            {modalData.discount_amount > 0 && (
+              <div className="flex justify-between text-[#22c55e]"><span>Discount</span><span>-{formatCurrency(modalData.discount_amount)}</span></div>
+            )}
+            <div className="flex justify-between text-theme2"><span>Tax ({taxRate * 100}%)</span><span>{formatCurrency(modalData.tax_amount)}</span></div>
+            <div className="flex justify-between mt-1 text-[14px] font-extrabold text-[#3b82f6]"><span>Total</span><span>{formatCurrency(modalData.total)}</span></div>
             <div className="r-divider" />
             <div className="text-center text-[10.5px] text-theme3 mt-1.5">Thank you for shopping with us!</div>
           </div>

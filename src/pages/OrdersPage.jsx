@@ -2,6 +2,10 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { useOrders } from '../hooks/useOrders';
 import Pagination from '../components/Pagination';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('OrdersPage');
 
 export default function OrdersPage() {
   const { printReceipt, printInvoice } = useApp();
@@ -47,10 +51,10 @@ export default function OrdersPage() {
       {/* Stats */}
       <div className="grid grid-cols-5 gap-3 mb-4">
         {[
-          { label: 'Total Revenue', value: '$' + stats.rev.toFixed(2), sub: stats.cnt + ' transactions', color: '#3b82f6' },
-          { label: 'Average Order', value: stats.cnt ? '$' + stats.avg.toFixed(2) : '$0.00', sub: 'per transaction', color: '#f97316' },
-          { label: 'Cash Revenue', value: '$' + stats.cashRev.toFixed(2), sub: orders.filter(o => o.payment_method === 'cash').length + ' orders', color: '#22c55e' },
-          { label: 'Card Revenue', value: '$' + stats.cardRev.toFixed(2), sub: orders.filter(o => o.payment_method !== 'cash').length + ' orders', color: '#8b5cf6' },
+          { label: 'Total Revenue', value: formatCurrency(stats.rev), sub: stats.cnt + ' transactions', color: '#3b82f6' },
+          { label: 'Average Order', value: formatCurrency(stats.avg), sub: 'per transaction', color: '#f97316' },
+          { label: 'Cash Revenue', value: formatCurrency(stats.cashRev), sub: orders.filter(o => o.payment_method === 'cash').length + ' orders', color: '#22c55e' },
+          { label: 'Card Revenue', value: formatCurrency(stats.cardRev), sub: orders.filter(o => o.payment_method !== 'cash').length + ' orders', color: '#8b5cf6' },
           { label: 'Items Sold', value: stats.itemsCnt, sub: 'units total', color: '#14b8a6' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
@@ -101,18 +105,18 @@ export default function OrdersPage() {
                     {(o.payment_method || 'cash').charAt(0).toUpperCase() + (o.payment_method || 'cash').slice(1)}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(o.subtotal || 0).toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${(o.tax_amount || 0).toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${(o.total || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{formatCurrency(o.subtotal || 0)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{formatCurrency(o.tax_amount || 0)}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">{formatCurrency(o.total || 0)}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-[rgba(34,197,94,.12)] text-[#22c55e]">Completed</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <div className="flex gap-1.5">
-                    <button onClick={() => printReceipt(o)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover hover:text-theme flex items-center gap-1">
+                    <button onClick={() => { logger.info('Reprinting receipt', { orderId: o.id }); printReceipt(o); }} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover hover:text-theme flex items-center gap-1">
                       <svg viewBox="0 0 24 24" className="w-3 h-3 stroke-current fill-none" strokeWidth="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                       Receipt
                     </button>
-                    <button onClick={() => printInvoice(o)} className="bg-[#3b82f6]/10 border border-[#3b82f6]/20 px-2.5 py-1 rounded-md text-[11px] text-[#3b82f6] font-bold cursor-pointer hover:bg-[#3b82f6] hover:text-white flex items-center gap-1 transition-all">
+                    <button onClick={() => { logger.info('Reprinting invoice', { orderId: o.id }); printInvoice(o); }} className="bg-[#3b82f6]/10 border border-[#3b82f6]/20 px-2.5 py-1 rounded-md text-[11px] text-[#3b82f6] font-bold cursor-pointer hover:bg-[#3b82f6] hover:text-white flex items-center gap-1 transition-all">
                       <svg viewBox="0 0 24 24" className="w-3 h-3 stroke-current fill-none" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                       A4 Invoice
                     </button>

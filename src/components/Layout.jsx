@@ -6,6 +6,10 @@ import { useOrders } from '../hooks/useOrders';
 import { useShifts } from '../hooks/useShifts';
 import { useState, useEffect, useMemo } from 'react';
 import Toast from './Toast';
+import { formatCurrency } from '../utils/formatters';
+import createLogger from '../utils/logger';
+
+const logger = createLogger('Layout');
 
 const NAV_ITEMS = [
   { label: 'Main', type: 'section' },
@@ -70,10 +74,10 @@ export default function Layout() {
   const { theme, setTheme } = useTheme();
   const { openModal, features, showToast } = useApp();
   const { orders = [] } = useOrders();
-  const { currentShift } = useShifts();
+  const { activeShift } = useShifts();
   
-  const shiftOpen = !!currentShift;
-  const shiftStartTime = currentShift ? new Date(currentShift.start_time) : null;
+  const shiftOpen = !!activeShift;
+  const shiftStartTime = activeShift ? new Date(activeShift.opened_at) : null;
   
   const [clock, setClock] = useState('--:--:--');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -259,7 +263,7 @@ export default function Layout() {
             <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
           </svg>
           {shiftOpen ? (
-            <span>Shift open · Started at {shiftStartTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} · Total sales: <strong>${stats.rev.toFixed(2)}</strong></span>
+            <span>Shift open · Started at {shiftStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Total sales: <strong>{formatCurrency(stats.rev)}</strong></span>
           ) : (
             <span>Shift closed · Open a new shift to start selling</span>
           )}

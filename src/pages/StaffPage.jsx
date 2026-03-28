@@ -4,6 +4,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useStaff } from '../hooks/useStaff';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('StaffPage');
 
 export default function StaffPage() {
   const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast, printStaffPayslip } = useApp();
@@ -14,7 +18,7 @@ export default function StaffPage() {
   const [showPins, setShowPins] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const [form, setForm] = useState({ name: '', position: 'Cashier', shift: 'Morning', phone: '', salary: '', commType: 'percentage', commAmount: '' });
+  const [form, setForm] = useState({ name: '', position: 'cashier', shift: 'full-time', phone: '', salary: '', commType: 'percentage', commAmount: '', pin: '', status: 'Active' });
 
   const filtered = useMemo(() => 
     (staff || []).filter(s => !filter || s.name?.toLowerCase().includes(filter.toLowerCase()) || s.phone?.includes(filter)),
@@ -46,11 +50,13 @@ export default function StaffPage() {
   const handleBulkDelete = async () => {
     if (confirm(`Are you sure you want to remove ${selectedIds.length} staff members?`)) {
       try {
+        logger.info('Bulk removing staff', { ids: selectedIds });
         await deleteMultipleStaff(selectedIds);
+        showToast(`${selectedIds.length} staff members removed successfully`, 'success');
         setSelectedIds([]);
-        showToast('Staff removed successfully', 'success');
       } catch (err) {
-        showToast('Bulk delete failed', 'error');
+        logger.error('Bulk staff removal failed', { error: err.message, ids: selectedIds });
+        showToast('Bulk delete failed: ' + err.message, 'error');
       }
     }
   };
@@ -75,15 +81,19 @@ export default function StaffPage() {
 
     try {
       if (activeModal === 'editStaff' && modalData) {
+        logger.info(`Updating staff profile: ${modalData.id}`, dbData);
         await updateStaff({ id: modalData.id, ...dbData });
+        showToast('Staff profile updated successfully', 'success');
       } else {
+        logger.info('Adding new staff member', dbData);
         await addStaff(dbData);
+        showToast('Staff member added successfully', 'success');
       }
       closeModal();
-      setForm({ name: '', position: 'Cashier', shift: 'Morning', phone: '', salary: '', commType: 'percentage', commAmount: '' });
-      showToast('Staff profile saved', 'success');
+      setForm({ name: '', position: 'Cashier', shift: 'full-time', phone: '', salary: '', commType: 'percentage', commAmount: '', pin: '', status: 'Active' });
     } catch (err) {
-      showToast('Failed to save staff: ' + err.message, 'error');
+      logger.error('Failed to save staff profile', { error: err.message, form });
+      showToast('Error saving staff: ' + err.message, 'error');
     }
   };
 
@@ -92,7 +102,7 @@ export default function StaffPage() {
       name: s.name, 
       phone: s.phone || '', 
       position: s.role?.charAt(0).toUpperCase() + s.role?.slice(1) || 'Cashier',
-      shift: s.shift_type || 'Morning',
+      shift: s.shift_type || 'full-time',
       status: s.is_active ? 'Active' : 'On Leave',
       salary: String(s.salary || 0),
       commType: s.commission_type || 'percentage',
@@ -117,7 +127,7 @@ export default function StaffPage() {
           { label: 'Total Staff', value: (staff || []).length, color: '#3b82f6' },
           { label: 'Present Today', value: present, color: '#22c55e' },
           { label: 'Avg Hours', value: '8.5', color: '#f97316' },
-          { label: 'Commission Due', value: '$' + commission.toFixed(2), color: '#8b5cf6' },
+          { label: 'Commission Due', value: formatCurrency(commission), color: '#8b5cf6' },
         ].map((s, i) => (
           <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
             <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
@@ -171,13 +181,24 @@ export default function StaffPage() {
                 </td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(139,92,246,.12)] text-[#8b5cf6]">{s.role?.toUpperCase() || 'CASHIER'}</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{s.phone}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${((s.salary || 0) * ((s.commission_amount || 0) / 100)).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{formatCurrency((s.salary || 0) * ((s.commission_amount || 0) / 100))}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                   <div className="flex gap-1.5">
                     <button onClick={() => openEdit(s)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
-                    <button onClick={() => printStaffPayslip(s)} className="bg-theme-elevated border border-[#3b82f6]/20 px-2.5 py-1 rounded-md text-[11px] text-[#3b82f6] font-bold cursor-pointer hover:bg-[#3b82f6] hover:text-white transition-all">Payslip</button>
+                    <button onClick={() => { logger.info('Generating payslip', { staffId: s.id }); printStaffPayslip(s); showToast('Payslip generated', 'info'); }} className="bg-theme-elevated border border-[#3b82f6]/20 px-2.5 py-1 rounded-md text-[11px] text-[#3b82f6] font-bold cursor-pointer hover:bg-[#3b82f6] hover:text-white transition-all">Payslip</button>
                     {isAdmin && (
-                      <button onClick={() => deleteStaff(s.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Remove</button>
+                      <button onClick={async () => {
+                        if (confirm('Remove this staff member?')) {
+                          try {
+                            logger.info(`Removing staff: ${s.id}`);
+                            await deleteStaff(s.id);
+                            showToast('Staff removed', 'success');
+                          } catch (err) {
+                            logger.error(`Failed to remove staff ${s.id}`, { error: err.message });
+                            showToast('Remove failed: ' + err.message, 'error');
+                          }
+                        }
+                      }} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Remove</button>
                     )}
                   </div>
                 </td>
@@ -253,23 +274,30 @@ function StaffForm({ form, setForm }) {
           <Label title="Position" />
           <select value={form.position} onChange={e => setForm({...form, position: e.target.value})} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none">
-            <option>Cashier</option><option>Manager</option><option>Stock Keeper</option><option>Sales Rep</option>
+            <option value="Cashier">Cashier</option>
+            <option value="Manager">Manager</option>
+            <option value="Admin">Admin</option>
+            <option value="Owner">Owner</option>
           </select>
         </div>
         <div>
           <Label title="Work Shift" />
           <select value={form.shift} onChange={e => setForm({...form, shift: e.target.value})} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none">
-            <option>Morning</option><option>Afternoon</option><option>Evening</option><option>Full-time</option>
+            <option value="full-time">Full-time</option>
+            <option value="part-time">Part-time</option>
+            <option value="morning">Morning Shift</option>
+            <option value="evening">Evening Shift</option>
           </select>
         </div>
         <div>
           <Label title="System Access" />
-          <select value={form.access || 'Cashier'} onChange={e => setForm({...form, access: e.target.value})} 
+          <select value={form.position} onChange={e => setForm({...form, position: e.target.value})} 
               className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]">
               <option value="Cashier">Cashier (Standard POS)</option>
               <option value="Manager">Manager (Inventory + Returns)</option>
               <option value="Admin">Admin (Full System)</option>
+              <option value="Owner">Owner (Root Access)</option>
           </select>
         </div>
         <div>
@@ -284,7 +312,7 @@ function StaffForm({ form, setForm }) {
       {/* Compensation */}
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <Label title="Base Salary" sub="$" />
+          <Label title="Base Salary" />
           <input type="number" value={form.salary} onChange={e => setForm({...form, salary: e.target.value})} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none font-bold" />
         </div>

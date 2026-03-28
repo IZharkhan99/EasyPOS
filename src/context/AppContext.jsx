@@ -1,23 +1,38 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useState, useContext, createContext, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import createLogger from '../utils/logger';
+import { TOAST_DURATIONS, DEFAULTS } from '../utils/constants';
+import { printReceipt as printR, printStaffPayslip as printS, printInvoice as printI } from '../utils/printUtils';
 
+const logger = createLogger('AppContext');
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
+  const { profile } = useAuth();
+  
   // Toast State
-  const [toast, setToast] = useState({ msg: '', type: '', show: false });
-  const toastTimer = useRef(null);
+  const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
 
-  const showToast = useCallback((msg, type = '') => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ msg, type, show: true });
-    toastTimer.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 2400);
-  }, []);
+  const showToast = (message, type = 'success') => {
+    logger.info(`Showing toast: ${message}`, { type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    
+    setToast({ message, type });
+    
+    const duration = TOAST_DURATIONS[type] || TOAST_DURATIONS.success;
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, duration);
+  };
 
   // Modal State
   const [activeModal, setActiveModal] = useState(null);
   const [modalData, setModalData] = useState(null);
 
   const openModal = useCallback((name, data = null) => { 
+    logger.info(`Opening modal: ${name}`);
     setActiveModal(name); 
     setModalData(data); 
   }, []);
@@ -80,60 +95,37 @@ export function AppProvider({ children }) {
   }, [getRangeDates]);
 
   // Printing Utilities
-  const printReceipt = useCallback((order, businessInfo = {}) => {
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    // Simplified print logic for cleaner context - normally would take full businessInfo
-    // Standard biz info if not provided
-    const biz = businessInfo.name ? businessInfo : { name: 'EasyPOS', address: 'System Default' };
-    
-    const items = order.items || order.cart || [];
-    const itemsHtml = items.map(item => `
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-            <span>${item.qty}x ${item.name}</span>
-            <span>$${((item.price || 0) * item.qty).toFixed(2)}</span>
-        </div>
-    `).join('');
+  const printReceipt = (data) => {
+    logger.info('Printing receipt', { orderId: data.id });
+    printR(data, profile, null);
+  };
 
-    printWindow.document.write(`
-      <html>
-        <body onload="window.print(); window.close();">
-          <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px;">
-            <h2 style="margin:0;">${biz.name}</h2>
-            <div style="font-size:11px;">${biz.address}</div>
-          </div>
-          <div>Order: ${order.id}</div>
-          <div style="border-bottom:1px dashed #000; padding:10px 0;">${itemsHtml}</div>
-          <div style="font-weight:bold; margin-top:10px;">
-            <div style="display:flex; justify-content:space-between;"><span>TOTAL:</span><span>$${(order.total || 0).toFixed(2)}</span></div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  }, []);
+  const printStaffPayslip = (staff) => {
+    logger.info('Printing payslip', { staffId: staff.id });
+    printS(staff, profile, null);
+  };
+
+  const printInvoice = (data) => {
+    logger.info('Printing invoice', { orderId: data.id });
+    printI(data, profile, null);
+  };
 
   // CSV Export Utility
   const exportModuleAsCSV = useCallback((moduleName, data) => {
     if (!data || data.length === 0) { showToast(`No data to export for ${moduleName}`, 'error'); return; }
     const headers = Object.keys(data[0]);
-    const csv = [
-      headers.join(','),
-      ...data.map(row => headers.map(header => {
-        const value = row[header];
-        const escaped = String(value || '').replace(/"/g, '""');
-        return escaped.includes(',') ? `"${escaped}"` : escaped;
-      }).join(','))
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `easypos-${moduleName}-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast(`${moduleName} exported as CSV!`, 'success');
+    if (window.confirm(`Export ${moduleName} data as CSV?`)) {
+      const csvContent = "data:text/csv;charset=utf-8," + 
+        (headers ? headers.join(",") + "\n" : "") + 
+        data.map(e => Object.values(e).join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${moduleName}_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      showToast(`${moduleName.charAt(0).toUpperCase() + moduleName.slice(1)} exported successfully`, 'success');
+    }
   }, [showToast]);
 
   const value = {
@@ -141,7 +133,7 @@ export function AppProvider({ children }) {
     activeModal, modalData, openModal, closeModal,
     features, toggleFeature,
     reportRange, setReportRange, customRange, setCustomRange, getFilteredData, getRangeDates,
-    printReceipt, exportModuleAsCSV
+    printReceipt, printInvoice, exportModuleAsCSV
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

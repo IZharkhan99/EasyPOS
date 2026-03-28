@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useApp } from '../context/AppContext';
+import createLogger from '../utils/logger';
+
+const logger = createLogger('LoginPage');
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('izharkhanfff@gmail.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const { login, isLoggingIn } = useAuth();
   const { showToast } = useApp();
   const navigate = useNavigate();
@@ -13,9 +16,12 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      logger.info('Attempting login', { email });
       await login({ email, password });
+      logger.info('Login successful', { email });
       navigate('/');
     } catch (err) {
+      logger.error('Login failed', { email, error: err.message });
       showToast(err.message || 'Invalid email or password', 'error');
     }
   };
@@ -47,11 +53,13 @@ export default function LoginPage() {
             {isLoggingIn ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
-        <div className="bg-theme-elevated border border-theme rounded-[9px] p-3 mt-3.5">
-          <div className="text-[11px] font-bold text-theme3 uppercase tracking-[.5px] mb-2">Demo Accounts</div>
-          <div className="text-xs py-1.5 text-theme2"><strong className="text-theme font-semibold">Email:</strong> admin@shop.com</div>
-          <div className="text-xs py-1.5 text-theme2"><strong className="text-theme font-semibold">Password:</strong> admin123</div>
-          <div className="text-xs py-1.5 text-theme2 mt-2"><strong className="text-theme font-semibold">or</strong> manager@shop.com / manager123</div>
+        <div className="bg-theme-elevated border border-theme rounded-[9px] p-4 mt-3.5 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#3b82f61a] flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-none stroke-[#3b82f6]" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          </div>
+          <div className="text-[11px] font-medium text-theme3 leading-relaxed">
+            Please use the credentials provided during your business registration.
+          </div>
         </div>
         <div className="text-center mt-5 text-[13px] text-theme2">
           New here? <Link to="/signup" className="text-[#3b82f6] font-bold hover:underline">Create a Business</Link>

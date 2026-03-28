@@ -2,6 +2,10 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { usePayments } from '../hooks/usePayments';
 import Pagination from '../components/Pagination';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('PaymentsPage');
 
 export default function PaymentsPage() {
   const { showToast } = useApp();
@@ -33,8 +37,16 @@ export default function PaymentsPage() {
         <button onClick={() => showToast('Advanced payment recorded', 'success')} className="bg-[#3b82f6] text-white border-none px-3.5 py-2 rounded-lg text-[12.5px] font-semibold cursor-pointer hover:bg-[#2563eb]">+ New Payment</button>
       </div>
       <div className="grid grid-cols-4 gap-3 mb-4">
-        {[{ label: 'Partial Payments', value: '$' + partial.toFixed(2), color: '#3b82f6' }, { label: 'BNPL Outstanding', value: '$' + bnpl.toFixed(2), color: '#f97316' }, { label: 'EMI Receivable', value: '$' + emi.toFixed(2), color: '#8b5cf6' }, { label: 'Gift Cards', value: '$' + gc.toFixed(2), color: '#22c55e' }].map((s, i) => (
-          <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5"><div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div><div className="text-[22px] font-extrabold" style={{ color: s.color }}>{s.value}</div></div>
+        {[
+          { label: 'Partial Payments', value: formatCurrency(partial), color: '#3b82f6' }, 
+          { label: 'BNPL Outstanding', value: formatCurrency(bnpl), color: '#f97316' }, 
+          { label: 'EMI Receivable', value: formatCurrency(emi), color: '#8b5cf6' }, 
+          { label: 'Gift Cards', value: formatCurrency(gc), color: '#22c55e' }
+        ].map((s, i) => (
+          <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
+            <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
+            <div className="text-[22px] font-extrabold" style={{ color: s.color }}>{s.value}</div>
+          </div>
         ))}
       </div>
       <div className="bg-theme-surface border border-theme rounded-t-xl px-4 py-3 flex items-center justify-between"><span className="text-[13px] font-bold">Payment Records</span><input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search…" className="bg-theme-elevated border border-theme2 rounded-lg py-1.5 px-3 text-xs text-theme outline-none w-52 focus:border-[#3b82f6]" /></div>
@@ -47,7 +59,7 @@ export default function PaymentsPage() {
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{p.date}</td>
                 <td className="px-4 py-2.5 text-[13px] font-bold border-b border-theme">{p.orderRef}</td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{p.customer}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">${p.amount.toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme font-bold text-theme">{formatCurrency(p.amount)}</td>
                 <td className="px-4 py-2.5 border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{p.method}</span></td>
                 <td className="px-4 py-2.5 border-b border-theme"><span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${p.status === 'Pending' ? 'bg-[rgba(249,115,22,.12)] text-[#f97316]' : 'bg-[rgba(34,197,94,.12)] text-[#22c55e]'}`}>{p.status}</span></td>
                 <td className="px-4 py-2.5 text-[12px] text-theme3 border-b border-theme">{p.details}</td>

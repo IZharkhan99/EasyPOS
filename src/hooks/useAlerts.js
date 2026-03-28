@@ -9,6 +9,12 @@ export function useAlerts() {
   const businessId = profile?.business_id;
   const queryClient = useQueryClient();
 
+  const { data: alerts = [], isLoading } = useQuery({
+    queryKey: ['alerts', businessId],
+    queryFn: () => dal.getAlerts(businessId),
+    enabled: !!businessId,
+  });
+
   const clearAlerts = useMutation({
     mutationFn: () => dal.deleteAlerts(businessId),
     onSuccess: () => {

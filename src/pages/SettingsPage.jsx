@@ -7,6 +7,10 @@ import { useCustomers } from '../hooks/useCustomers';
 import { useSettings } from '../hooks/useSettings';
 import { useAuth } from '../hooks/useAuth';
 import { useRef } from 'react';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('SettingsPage');
 
 const THEMES = [
   { id: 'dark', label: 'Dark', bg: '#131920' },
@@ -29,6 +33,7 @@ export default function SettingsPage() {
   const fileInputRef = useRef(null);
 
   const handleExportOrders = () => {
+    logger.info('Exporting orders to CSV');
     const headers = ['Order #', 'Customer', 'Items', 'Payment', 'Subtotal', 'Tax', 'Total', 'Time', 'Date', 'Status'];
     const data = orders.map(o => ({
       'Order #': o.id,
@@ -101,12 +106,26 @@ export default function SettingsPage() {
               { label: 'Phone Number', key: 'phone', value: businessInfo.phone },
               { label: 'Business Email', key: 'email', value: businessInfo.email },
               { label: 'Tax ID / Registration', key: 'taxId', value: businessInfo.taxId },
+              { label: 'Currency Symbol', key: 'currency_symbol', value: businessInfo.currency_symbol || '$', sub: 'e.g. $, Rs., €' },
+              { label: 'Default Tax Rate (%)', key: 'tax_rate', value: businessInfo.tax_rate || '8', sub: '0-100' },
             ].map((f, i) => (
               <div key={i}>
-                <label className="text-xs font-semibold text-theme2 mb-1 block">{f.label}</label>
+                <div className="flex justify-between items-end mb-1">
+                    <label className="text-xs font-semibold text-theme2 block">{f.label}</label>
+                    {f.sub && <span className="text-[10px] text-theme3 font-medium">{f.sub}</span>}
+                </div>
                 <input 
                   value={f.value} 
-                  onChange={e => updateBusinessInfo({ [f.key]: e.target.value })}
+                  onChange={async (e) => {
+                    try {
+                        const val = e.target.value;
+                        await updateBusinessInfo({ [f.key]: val });
+                        logger.info(`Updated business setting: ${f.key}`, { value: val });
+                    } catch (err) {
+                        logger.error(`Failed to update business setting: ${f.key}`, err);
+                        showToast(`Update failed: ${err.message}`, 'error');
+                    }
+                  }}
                   className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none focus:border-[#3b82f6]" 
                 />
               </div>
@@ -145,7 +164,16 @@ export default function SettingsPage() {
               ].map((t) => (
                 <div key={t.key} className="flex items-center justify-between py-2 border-b border-theme last:border-0">
                   <div><div className="text-[12.5px] font-semibold">{t.label}</div><div className="text-[11px] text-theme3">{t.desc}</div></div>
-                  <button onClick={() => updatePosSetting({ key: t.key, value: !posSettings[t.key] })} className={`toggle-switch ${posSettings[t.key] ? 'on' : ''}`} />
+                  <button onClick={async () => {
+                    try {
+                        await updatePosSetting({ key: t.key, value: !posSettings[t.key] });
+                        logger.info(`Toggled POS setting: ${t.key}`, { value: !posSettings[t.key] });
+                        showToast(`${t.label} ${!posSettings[t.key] ? 'Enabled' : 'Disabled'}`, 'info');
+                    } catch (err) {
+                        logger.error(`Failed to toggle POS setting: ${t.key}`, err);
+                        showToast('Error updating setting', 'error');
+                    }
+                  }} className={`toggle-switch ${posSettings[t.key] ? 'on' : ''}`} />
                 </div>
               ))}
             </div>

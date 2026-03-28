@@ -4,6 +4,10 @@ import { useSuppliers } from '../hooks/useSuppliers';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useState, useMemo } from 'react';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('PurchaseOrdersPage');
 
 export default function PurchaseOrdersPage() {
    const { openModal, closeModal, activeModal, modalData, showToast, printSupplierInvoice } = useApp();
@@ -13,7 +17,7 @@ export default function PurchaseOrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const [formData, setFormData] = useState({ supplier: '', total: 0, date: new Date().toISOString().split('T')[0], status: 'Pending' });
+   const [formData, setFormData] = useState({ supplier_id: '', total: 0, order_date: new Date().toISOString().split('T')[0], status: 'pending' });
 
   const filtered = (purchaseOrders || []).filter(po => 
     po.id?.toLowerCase().includes(search.toLowerCase()) || 
@@ -28,21 +32,35 @@ export default function PurchaseOrdersPage() {
   }, [filtered, currentPage]);
 
   const handleAdd = () => {
-    setFormData({ supplier: suppliers[0]?.name || '', total: 0, date: new Date().toISOString().split('T')[0], status: 'Pending' });
+    setFormData({ 
+      supplier_id: suppliers[0]?.id || '', 
+      total: 0, 
+      order_date: new Date().toISOString().split('T')[0], 
+      status: 'pending' 
+    });
     openModal('addPO');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    createPurchaseOrder(formData);
-    closeModal();
+    try {
+      logger.info('Creating purchase order', formData);
+      await createPurchaseOrder(formData);
+      showToast('Purchase order created successfully', 'success');
+      closeModal();
+    } catch (err) {
+      logger.error('Failed to create purchase order', { error: err.message, formData });
+      showToast('Failed to create purchase order: ' + err.message, 'error');
+    }
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Received': return '#22c55e';
-      case 'Pending': return '#f97316';
-      case 'Cancelled': return '#ef4444';
+    const s = status?.toLowerCase();
+    switch (s) {
+      case 'received': return '#22c55e';
+      case 'pending': return '#f97316';
+      case 'ordered': return '#3b82f6';
+      case 'cancelled': return '#ef4444';
       default: return '#3b82f6';
     }
   };
@@ -77,29 +95,73 @@ export default function PurchaseOrdersPage() {
             </tr>
           </thead>
           <tbody>
-            {paginatedData.map(po => (
-              <tr key={po.id} className="hover:bg-theme-hover transition-colors">
-                <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">{po.id}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.supplier}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.date}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">${(po.total || 0).toFixed(2)}</td>
-                <td className="px-4 py-3 text-[13px] border-b border-theme">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ backgroundColor: getStatusColor(po.status) + '20', color: getStatusColor(po.status) }}>{po.status}</span>
-                </td>
-                 <td className="px-4 py-3 text-[13px] border-b border-theme whitespace-nowrap">
-                   <div className="flex gap-2">
-                     {po.status === 'Pending' && (
-                       <button onClick={() => updatePurchaseOrder({ id: po.id, data: { status: 'Received' } })} className="text-[11px] font-bold text-[#22c55e] bg-[rgba(34,197,94,.1)] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#22c55e] hover:text-white transition-all">
-                         Receive Stock
-                       </button>
-                     )}
-                     <button onClick={() => printSupplierInvoice(po)} className="text-[11px] font-bold text-[#8b5cf6] bg-[rgba(139,92,246,.1)] border border-[rgba(139,92,246,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#8b5cf6] hover:text-white transition-all">
-                       View Invoice
-                     </button>
-                   </div>
-                 </td>
-              </tr>
-            ))}
+            {isPOLoading ? (
+              [...Array(5)].map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  {[...Array(6)].map((__, j) => (
+                    <td key={j} className="px-4 py-4 border-b border-theme">
+                      <div className="h-4 bg-theme-elevated rounded w-3/4"></div>
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              paginatedData.map(po => (
+                <tr key={po.id} className="hover:bg-theme-hover transition-colors">
+                  <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">{po.id}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.supplier}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme text-theme2">{po.date}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme font-bold text-theme">{formatCurrency(po.total || 0)}</td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase" style={{ backgroundColor: getStatusColor(po.status) + '20', color: getStatusColor(po.status) }}>{po.status}</span>
+                  </td>
+                  <td className="px-4 py-3 text-[13px] border-b border-theme whitespace-nowrap">
+                    <div className="flex gap-2">
+                      {po.status?.toLowerCase() === 'ordered' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              logger.info('Updating PO status to received', { poId: po.id });
+                              await updatePurchaseOrder({ id: po.id, data: { status: 'received' } });
+                              showToast('Stock received successfully', 'success');
+                            } catch (err) {
+                              logger.error('Failed to update PO status', { error: err.message, poId: po.id });
+                              showToast('Failed to update status: ' + err.message, 'error');
+                            }
+                          }} 
+                          className="text-[11px] font-bold text-[#22c55e] bg-[rgba(34,197,94,.1)] border border-[rgba(34,197,94,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#22c55e] hover:text-white transition-all"
+                        >
+                          Receive Stock
+                        </button>
+                      )}
+                      {po.status?.toLowerCase() === 'pending' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              logger.info('Updating PO status to ordered', { poId: po.id });
+                              await updatePurchaseOrder({ id: po.id, data: { status: 'ordered' } });
+                              showToast('PO marked as ordered', 'success');
+                            } catch (err) {
+                              logger.error('Failed to update PO status', { error: err.message, poId: po.id });
+                              showToast('Failed to update status: ' + err.message, 'error');
+                            }
+                          }} 
+                          className="text-[11px] font-bold text-[#3b82f6] bg-[rgba(59,130,246,.1)] border border-[rgba(59,130,246,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#3b82f6] hover:text-white transition-all"
+                        >
+                          Mark Ordered
+                        </button>
+                      )}
+                      <button onClick={() => printSupplierInvoice(po)} className="text-[11px] font-bold text-[#8b5cf6] bg-[rgba(139,92,246,.1)] border border-[rgba(139,92,246,.2)] px-2 py-1 rounded cursor-pointer hover:bg-[#8b5cf6] hover:text-white transition-all">
+                        View Invoice
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+            {!isPOLoading && paginatedData.length === 0 && (
+              <tr><td colSpan="6" className="p-10 text-center text-theme3 italic">No purchase orders found</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -111,8 +173,9 @@ export default function PurchaseOrdersPage() {
           <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="text-[11px] font-bold text-theme2 uppercase tracking-wide mb-1.5 block">Supplier *</label>
-              <select required value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]">
-                {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              <select required value={formData.supplier_id} onChange={e => setFormData({...formData, supplier_id: e.target.value})} className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]">
+                <option value="" disabled>Select a supplier</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>
@@ -121,12 +184,12 @@ export default function PurchaseOrdersPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[11px] font-bold text-theme2 uppercase tracking-wide mb-1.5 block">Total Cost ($)</label>
+              <label className="text-[11px] font-bold text-theme2 uppercase tracking-wide mb-1.5 block">Total Cost</label>
               <input type="number" step="0.01" required value={formData.total} onChange={e => setFormData({...formData, total: parseFloat(e.target.value)})} className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6] font-bold" />
             </div>
             <div>
               <label className="text-[11px] font-bold text-theme2 uppercase tracking-wide mb-1.5 block">Expected Date</label>
-              <input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]" />
+              <input type="date" required value={formData.order_date} onChange={e => setFormData({...formData, order_date: e.target.value})} className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]" />
             </div>
           </div>
 

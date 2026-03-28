@@ -3,6 +3,11 @@ import { useApp } from '../context/AppContext';
 import { useExpenses } from '../hooks/useExpenses';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+import { DEFAULTS } from '../utils/constants';
+
+const logger = createLogger('ExpensesPage');
 
 export default function ExpensesPage() {
   const { openModal, closeModal, showToast } = useApp();
@@ -12,12 +17,12 @@ export default function ExpensesPage() {
   const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], category: 'Utilities', description: '', amount: '', method: 'Cash' });
+  const [form, setForm] = useState({ expense_date: new Date().toISOString().split('T')[0], category: 'Utilities', description: '', amount: '', payment_method: 'cash', status: 'approved' });
 
   const filtered = useMemo(() =>
     expenses.filter(e => {
       const matchSearch = !filter || e.category.toLowerCase().includes(filter.toLowerCase()) || e.description.toLowerCase().includes(filter.toLowerCase());
-      const expenseDate = new Date(e.date);
+      const expenseDate = new Date(e.expense_date || e.date);
       const matchStart = !startDate || expenseDate >= new Date(startDate);
       const matchEnd = !endDate || expenseDate <= new Date(endDate + 'T23:59:59');
       return matchSearch && matchStart && matchEnd;
@@ -31,13 +36,35 @@ export default function ExpensesPage() {
     return filtered.slice(start, start + itemsPerPage);
   }, [filtered, currentPage, itemsPerPage]);
 
-  const month = expenses.reduce((s, e) => s + e.amount, 0);
-  const today = expenses.filter(e => e.date === new Date().toISOString().split('T')[0]).reduce((s, e) => s + e.amount, 0);
+  const month = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const today = expenses.filter(e => (e.expense_date || e.date) === new Date().toISOString().split('T')[0]).reduce((s, e) => s + (e.amount || 0), 0);
 
-  const handleSave = () => {
-    addExpense({ ...form, amount: parseFloat(form.amount) || 0, ref: 'REF-' + Date.now(), createdBy: 'Current User', approvedBy: 'Manager' });
-    closeModal();
-    setForm({ date: new Date().toISOString().split('T')[0], category: 'Utilities', description: '', amount: '', method: 'Cash' });
+  const handleSave = async () => {
+    if (!form.amount || parseFloat(form.amount) <= 0) {
+      showToast('Enter a valid expense amount', 'error');
+      return;
+    }
+    
+    try {
+      const expenseData = { 
+        amount: parseFloat(form.amount),
+        category: form.category,
+        description: form.description,
+        expense_date: form.expense_date,
+        payment_method: form.payment_method.toLowerCase(),
+        status: form.status.toLowerCase()
+      };
+      
+      logger.info('Adding new expense', expenseData);
+      await addExpense(expenseData);
+      
+      showToast('Expense added successfully', 'success');
+      closeModal();
+      setForm({ expense_date: new Date().toISOString().split('T')[0], category: 'Utilities', description: '', amount: '', payment_method: 'cash', status: 'approved' });
+    } catch (err) {
+      logger.error('Failed to save expense', { error: err.message, form });
+      showToast('Error saving expense: ' + err.message, 'error');
+    }
   };
 
   return (
@@ -47,8 +74,16 @@ export default function ExpensesPage() {
         <button onClick={() => openModal('addExpense')} className="bg-[#3b82f6] text-white border-none px-3.5 py-2 rounded-lg text-[12.5px] font-semibold cursor-pointer hover:bg-[#2563eb]">+ Add Expense</button>
       </div>
       <div className="grid grid-cols-4 gap-3 mb-4">
-        {[{ label: "Today's Expenses", value: '$' + today.toFixed(2), color: '#ef4444' }, { label: 'Monthly Total', value: '$' + month.toFixed(2), color: '#f97316' }, { label: 'Pending Approval', value: expenses.filter(e => e.status === 'Pending').length, color: '#eab308' }, { label: 'Budget Used', value: Math.round((month / 5000) * 100) + '%', color: '#3b82f6' }].map((s, i) => (
-          <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5"><div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div><div className="text-[22px] font-extrabold" style={{ color: s.color }}>{s.value}</div></div>
+        {[
+          { label: "Today's Expenses", value: formatCurrency(today), color: '#ef4444' }, 
+          { label: 'Monthly Total', value: formatCurrency(month), color: '#f97316' }, 
+          { label: 'Pending Approval', value: expenses.filter(e => e.status?.toLowerCase() === 'pending').length, color: '#eab308' }, 
+          { label: 'Budget Used', value: Math.round((month / DEFAULTS.MONTHLY_BUDGET) * 100) + '%', color: '#3b82f6' }
+        ].map((s, i) => (
+          <div key={i} className="bg-theme-surface border border-theme rounded-xl p-3.5">
+            <div className="text-[10.5px] text-theme3 uppercase tracking-[.5px] font-semibold mb-1">{s.label}</div>
+            <div className="text-[22px] font-extrabold" style={{ color: s.color }}>{s.value}</div>
+          </div>
         ))}
       </div>
       <div className="bg-theme-surface border border-theme rounded-t-xl px-4 py-3 flex items-center justify-between gap-4">
@@ -73,13 +108,17 @@ export default function ExpensesPage() {
           <tbody>
             {paginatedData.map(e => (
               <tr key={e.id} className="hover:bg-theme-hover">
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{e.date}</td>
+                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{e.expense_date || e.date}</td>
                 <td className="px-4 py-2.5 border-b border-theme"><span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{e.category}</span></td>
                 <td className="px-4 py-2.5 text-[13px] border-b border-theme">{e.description}</td>
-                <td className="px-4 py-2.5 text-[13px] font-bold text-[#ef4444] border-b border-theme">${e.amount.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-[13px] border-b border-theme">{e.method}</td>
-                <td className="px-4 py-2.5 border-b border-theme"><span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${e.status === 'Pending' ? 'bg-[rgba(249,115,22,.12)] text-[#f97316]' : 'bg-[rgba(34,197,94,.12)] text-[#22c55e]'}`}>{e.status}</span></td>
-                <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">{e.createdBy}</td>
+                <td className="px-4 py-2.5 text-[13px] font-bold text-[#ef4444] border-b border-theme">{formatCurrency(e.amount)}</td>
+                <td className="px-4 py-2.5 text-[13px] border-b border-theme uppercase">{e.payment_method || e.method}</td>
+                <td className="px-4 py-2.5 border-b border-theme">
+                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase ${e.status?.toLowerCase() === 'pending' ? 'bg-[rgba(249,115,22,.12)] text-[#f97316]' : e.status?.toLowerCase() === 'rejected' ? 'bg-[rgba(239,68,68,.12)] text-[#ef4444]' : 'bg-[rgba(34,197,94,.12)] text-[#22c55e]'}`}>
+                    {e.status || 'approved'}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">{e.createdBy || e.created_by || 'System'}</td>
                 <td className="px-4 py-2.5 border-b border-theme"><button onClick={() => showToast(e.ref)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">View</button></td>
               </tr>
             ))}
@@ -98,13 +137,14 @@ export default function ExpensesPage() {
       <Modal id="addExpense" title="Add Expense" subtitle="Record a new expense" wide>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-semibold text-theme2 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none focus:border-[#3b82f6]" /></div>
+            <div><label className="text-xs font-semibold text-theme2 mb-1 block">Date</label><input type="date" value={form.expense_date} onChange={e => setForm({...form, expense_date: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none focus:border-[#3b82f6]" /></div>
             <div><label className="text-xs font-semibold text-theme2 mb-1 block">Category</label><select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none"><option>Utilities</option><option>Supplies</option><option>Maintenance</option><option>Marketing</option><option>Rent</option><option>Salary</option></select></div>
           </div>
           <div><label className="text-xs font-semibold text-theme2 mb-1 block">Description</label><input value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none focus:border-[#3b82f6]" /></div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs font-semibold text-theme2 mb-1 block">Amount</label><input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none focus:border-[#3b82f6]" /></div>
-            <div><label className="text-xs font-semibold text-theme2 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({...form, method: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none"><option>Cash</option><option>Card</option><option>Bank Transfer</option><option>Check</option></select></div>
+            <div><label className="text-xs font-semibold text-theme2 mb-1 block">Method</label><select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none"><option value="cash">Cash</option><option value="card">Card</option><option value="bank">Bank Transfer</option></select></div>
+            <div><label className="text-xs font-semibold text-theme2 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full bg-theme-elevated border border-theme2 rounded-lg py-2 px-3 text-xs text-theme outline-none"><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></select></div>
           </div>
         </div>
         <div className="flex gap-2 mt-4">

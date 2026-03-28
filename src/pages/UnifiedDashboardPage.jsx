@@ -2,9 +2,16 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useOrders } from '../hooks/useOrders';
 import { useProducts } from '../hooks/useProducts';
+import { useCustomers } from '../hooks/useCustomers';
+import { useAuth } from '../hooks/useAuth';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+import { DEFAULTS } from '../utils/constants';
+
 Chart.register(...registerables);
+const logger = createLogger('UnifiedDashboard');
 
 function StatCard({ label, value, color, sub, icon }) {
   return (
@@ -25,7 +32,11 @@ export default function UnifiedDashboardPage() {
   const { showToast, openModal, reportRange, setReportRange, customRange, setCustomRange, getFilteredData } = useApp();
   const { orders: allOrders } = useOrders();
   const { products = [] } = useProducts();
+  const { customers = [] } = useCustomers();
+  const { profile } = useAuth();
   const orders = getFilteredData(allOrders || []);
+  
+  const currencySymbol = profile?.currency_symbol || DEFAULTS.CURRENCY_SYMBOL;
   
   const stats = useMemo(() => {
     const rev = orders.reduce((s, o) => s + (o.total || 0), 0);
@@ -59,7 +70,7 @@ export default function UnifiedDashboardPage() {
 
     const scales = (isCurrency = true) => ({
       x: { grid: { display: false }, ticks: { color: '#4a5e72', font: { size: 10 } }, border: { display: false } },
-      y: { min: 0, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#4a5e72', font: { size: 10 }, callback: v => isCurrency ? '$' + v : v }, border: { display: false } }
+      y: { min: 0, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#4a5e72', font: { size: 10 }, callback: v => isCurrency ? currencySymbol + v : v }, border: { display: false } }
     });
 
     if (viewMode === 'simple') {
@@ -228,11 +239,11 @@ export default function UnifiedDashboardPage() {
 
       {/* KPI Cards (Matching original 5-card layout) */}
       <div className="grid grid-cols-5 gap-3 mb-4">
-        <StatCard label="Today's Revenue" value={`$${stats.rev.toFixed(2)}`} color="#3b82f6" sub={`Selected period`} icon={<><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></>} />
+        <StatCard label="Today's Revenue" value={formatCurrency(stats.rev)} color="#3b82f6" sub={`Selected period`} icon={<><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></>} />
         <StatCard label="Orders" value={orders.length} color="#10b981" sub="In selected period" icon={<><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" /></>} />
-        <StatCard label="Avg Order Value" value={`$${stats.avg.toFixed(2)}`} color="#f59e0b" sub="Average per sale" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></>} />
+        <StatCard label="Avg Order Value" value={formatCurrency(stats.avg)} color="#f59e0b" sub="Average per sale" icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></>} />
         <StatCard label="Items Sold" value={stats.items} color="#8b5cf6" sub="units sold" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></>} />
-        <StatCard label="Customers" value="1,248" color="#14b8a6" sub="+14 this week" icon={<><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></>} />
+        <StatCard label="Customers" value={customers.length.toLocaleString()} color="#14b8a6" sub="Total database" icon={<><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></>} />
       </div>
 
       {/* Charts Section */}
@@ -336,7 +347,7 @@ export default function UnifiedDashboardPage() {
                 <td className="px-4 py-2.5 text-[11px]">
                   <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${o.payment_method === 'cash' ? 'bg-[#22c55e1a] text-[#22c55e]' : 'bg-[#3b82f61a] text-[#3b82f6]'}`}>{o.payment_method}</span>
                 </td>
-                <td className="px-4 py-2.5 text-[12px] font-black text-theme">${(o.total || 0).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-[12px] font-black text-theme">{formatCurrency(o.total || 0)}</td>
                 <td className="px-4 py-2.5 text-[11px] text-theme3 tabular-nums">{new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
               </tr>
             ))}

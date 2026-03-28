@@ -4,6 +4,10 @@ import { useOrders } from '../hooks/useOrders';
 import { usePurchaseOrders } from '../hooks/usePurchaseOrders';
 import { useStaff } from '../hooks/useStaff';
 import { useCustomers } from '../hooks/useCustomers';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+
+const logger = createLogger('ReportsPage');
 
 export default function ReportsPage() {
   const { 
@@ -37,7 +41,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-theme-surface border border-theme p-4 rounded-xl">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Total Revenue</div>
-          <div className="text-xl font-black text-[#3b82f6]">${stats.rev.toFixed(2)}</div>
+          <div className="text-xl font-black text-[#3b82f6]">{formatCurrency(stats.rev)}</div>
         </div>
         <div className="bg-theme-surface border border-theme p-4 rounded-xl">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Total Orders</div>
@@ -45,11 +49,11 @@ export default function ReportsPage() {
         </div>
         <div className="bg-theme-surface border border-theme p-4 rounded-xl">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Tax Collected</div>
-          <div className="text-xl font-black text-[#f59e0b]">${stats.tax.toFixed(2)}</div>
+          <div className="text-xl font-black text-[#f59e0b]">{formatCurrency(stats.tax)}</div>
         </div>
         <div className="bg-theme-surface border border-theme p-4 rounded-xl">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Discounts Given</div>
-          <div className="text-xl font-black text-[#f43f5e]">${stats.disc.toFixed(2)}</div>
+          <div className="text-xl font-black text-[#f43f5e]">{formatCurrency(stats.disc)}</div>
         </div>
       </div>
 
@@ -70,7 +74,7 @@ export default function ReportsPage() {
                 <td className="px-4 py-3.5 text-[12px] text-theme font-medium">{o.customer?.name || o.customer || 'Walk-in'}</td>
                 <td className="px-4 py-3.5 text-[12px] text-theme3">{o.itemCount} items</td>
                 <td className="px-4 py-3.5"><span className="px-2 py-0.5 rounded-full bg-[#22c55e1a] text-[#22c55e] text-[9px] font-bold uppercase">Paid</span></td>
-                <td className="px-4 py-3.5 text-[12px] font-bold text-theme">${o.total.toFixed(2)}</td>
+                <td className="px-4 py-3.5 text-[12px] font-bold text-theme">{formatCurrency(o.total)}</td>
               </tr>
             ))}
             {!filteredOrders.length && <tr><td colSpan="6" className="p-10 text-center text-theme3 italic">No sales found for this period</td></tr>}
@@ -85,7 +89,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-theme-surface border border-theme p-4 rounded-xl shadow-sm">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Total Purchases</div>
-          <div className="text-xl font-black text-[#8b5cf6]">${stats.purchases.toFixed(2)}</div>
+          <div className="text-xl font-black text-[#8b5cf6]">{formatCurrency(stats.purchases)}</div>
         </div>
         <div className="bg-theme-surface border border-theme p-4 rounded-xl shadow-sm">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Restock Orders</div>
@@ -109,7 +113,7 @@ export default function ReportsPage() {
                 <td className="px-4 py-3.5 text-[12px] font-bold text-[#8b5cf6]">{po.id}</td>
                 <td className="px-4 py-3.5 text-[12px] text-theme font-medium">{po.supplier}</td>
                 <td className="px-4 py-3.5"><span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${po.status === 'Received' ? 'bg-[#22c55e1a] text-[#22c55e]' : 'bg-[#f59e0b1a] text-[#f59e0b]'}`}>{po.status}</span></td>
-                <td className="px-4 py-3.5 text-[12px] font-bold text-theme">${po.total.toFixed(2)}</td>
+                <td className="px-4 py-3.5 text-[12px] font-bold text-theme">{formatCurrency(po.total)}</td>
               </tr>
             ))}
             {!filteredPO.length && <tr><td colSpan="5" className="p-10 text-center text-theme3 italic">No purchase orders found for this period</td></tr>}
@@ -137,9 +141,9 @@ export default function ReportsPage() {
                   <tr key={s.id} className="border-t border-theme hover:bg-theme-hover transition-colors">
                     <td className="px-4 py-3.5 text-[13px] font-semibold text-theme">{s.name}</td>
                     <td className="px-4 py-3.5"><span className="px-2 py-0.5 rounded-full bg-[#8b5cf615] text-[#8b5cf6] text-[9.5px] font-bold uppercase">{s.access || 'Staff'}</span></td>
-                    <td className="px-4 py-3.5 text-[13px] text-theme font-medium tabular-nums">${s.salary?.toFixed(2)}</td>
+                    <td className="px-4 py-3.5 text-[13px] text-theme font-medium tabular-nums">{formatCurrency(s.salary)}</td>
                     <td className="px-4 py-3.5 text-[13px] text-theme tabular-nums">{s.commAmount}%</td>
-                    <td className="px-4 py-3.5 text-[13px] font-bold text-[#10b981] tabular-nums">${comm.toFixed(2)}</td>
+                    <td className="px-4 py-3.5 text-[13px] font-bold text-[#10b981] tabular-nums">{formatCurrency(comm)}</td>
                     <td className="px-4 py-3.5"><span className="px-2 py-0.5 rounded-full bg-[#22c55e1a] text-[#22c55e] text-[9px] font-bold uppercase">{s.status || 'Active'}</span></td>
                   </tr>
                 );
@@ -159,7 +163,7 @@ export default function ReportsPage() {
         </div>
         <div className="bg-theme-surface border border-theme p-4 rounded-xl shadow-sm">
           <div className="text-[10px] text-theme3 uppercase font-bold mb-1">Avg. Loyalty Points</div>
-          <div className="text-xl font-black text-[#3b82f6]">{(customers.reduce((s,c) => s + (c.points || 0), 0) / (customers.length || 1)).toFixed(0)}</div>
+          <div className="text-xl font-black text-[#3b82f6]">{(customers.reduce((s,c) => s + (c.points || 0), 0) / (customers.length || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
         </div>
       </div>
       <div className="bg-theme-surface border border-theme rounded-xl overflow-hidden shadow-sm">
@@ -178,7 +182,7 @@ export default function ReportsPage() {
                 <td className="px-4 py-3.5">
                     <span className="bg-[#3b82f61a] text-[#3b82f6] px-2 py-0.5 rounded-full text-[10px] font-bold tracking-tight">{c.points || 0} pts</span>
                 </td>
-                <td className="px-4 py-3.5 text-[13px] font-bold text-theme tabular-nums">${(c.spent || 0).toFixed(2)}</td>
+                <td className="px-4 py-3.5 text-[13px] font-bold text-theme tabular-nums">{formatCurrency(c.spent || 0)}</td>
                 <td className="px-4 py-3.5 text-[12px] text-theme3 italic">{c.lastVisit || 'N/A'}</td>
               </tr>
             ))}
@@ -213,6 +217,7 @@ export default function ReportsPage() {
               const data = activeTab === 'sales' ? filteredOrders : 
                            activeTab === 'purchases' ? filteredPO : 
                            activeTab === 'staff' ? staff : customers;
+              logger.info(`Printing summary report: ${activeTab}`);
               printSummaryReport(activeTab, data, rangeInfo);
             }}
             className="bg-[#3b82f6] text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-[#2563eb] transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95"

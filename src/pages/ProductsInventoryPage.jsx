@@ -6,6 +6,11 @@ import { useSuppliers } from '../hooks/useSuppliers';
 import { useInventoryHistory } from '../hooks/useInventoryHistory';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
+import createLogger from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
+import { DEFAULTS, PRODUCT_CATEGORIES, WAREHOUSE_OPTIONS } from '../utils/constants';
+
+const logger = createLogger('ProductsPage');
 
 export default function ProductsInventoryPage() {
   const { openModal, closeModal, activeModal, modalData, exportModuleAsCSV, showToast } = useApp();
@@ -16,7 +21,7 @@ export default function ProductsInventoryPage() {
   const [filter, setFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-  const [form, setForm] = useState({ name: '', category: 'Electronics', sku: '', price: '', cost: '', stock: '10', tracking: 'none', serial: '', warranty: '', batch: '', expiry: '', color: '', size: '', warehouse: 'Main' });
+  const [form, setForm] = useState({ name: '', category: PRODUCT_CATEGORIES[0], sku: '', price: '', cost: '', stock: '10', reorder_level: '5', tracking: 'none', serial: '', warranty: '', batch: '', expiry: '', color: '', size: '', warehouse: WAREHOUSE_OPTIONS[0] });
   const [selectedIds, setSelectedIds] = useState([]);
 
   const filtered = useMemo(() =>
@@ -44,30 +49,46 @@ export default function ProductsInventoryPage() {
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (confirm(`Are you sure you want to delete ${selectedIds.length} products?`)) {
-      deleteMultipleProducts(selectedIds);
-      setSelectedIds([]);
+      try {
+        logger.info('Bulk deleting products', { ids: selectedIds });
+        await deleteMultipleProducts(selectedIds);
+        showToast(`${selectedIds.length} products deleted successfully`, 'success');
+        setSelectedIds([]);
+      } catch (err) {
+        logger.error('Bulk delete failed', { error: err.message, ids: selectedIds });
+        showToast('Failed to delete products: ' + err.message, 'error');
+      }
     }
   };
 
-  const inStock = (products || []).filter(p => (p.stock || 0) > (p.reorder || 0)).length;
-  const lowStock = (products || []).filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= (p.reorder || 0)).length;
+  const inStock = (products || []).filter(p => (p.stock || 0) > (p.reorder_level || 0)).length;
+  const lowStock = (products || []).filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= (p.reorder_level || 0)).length;
   const outOfStock = (products || []).filter(p => (p.stock || 0) === 0).length;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) { showToast('Enter product name', 'error'); return; }
-    if (activeModal === 'editProduct' && modalData) {
-      updateProduct(modalData.id, { ...form, price: parseFloat(form.price) || 0, cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0 });
-    } else {
-      addProduct({ ...form, price: parseFloat(form.price) || 0, cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 10, reorder: 5, emoji: '📦' });
+    try {
+      if (activeModal === 'editProduct' && modalData) {
+        logger.info(`Updating product: ${modalData.id}`, form);
+        await updateProduct(modalData.id, { ...form, price: parseFloat(form.price) || 0, cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, reorder_level: parseInt(form.reorder_level) || 5 });
+        showToast('Product updated successfully', 'success');
+      } else {
+        logger.info('Adding new product', form);
+        await addProduct({ ...form, price: parseFloat(form.price) || 0, cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 10, reorder_level: parseInt(form.reorder_level) || 5, emoji: DEFAULTS.productEmoji });
+        showToast('Product added successfully', 'success');
+      }
+      closeModal();
+      setForm({ name: '', category: PRODUCT_CATEGORIES[0], sku: '', price: '', cost: '', stock: '10', reorder_level: '5', tracking: 'none', serial: '', warranty: '', batch: '', expiry: '', color: '', size: '', warehouse: WAREHOUSE_OPTIONS[0] });
+    } catch (err) {
+      logger.error('Failed to save product', { error: err.message, form });
+      showToast('Error saving product: ' + err.message, 'error');
     }
-    closeModal();
-    setForm({ name: '', category: 'Electronics', sku: '', price: '', cost: '', stock: '10', tracking: 'none', serial: '', warranty: '', batch: '', expiry: '', color: '', size: '', warehouse: 'Main' });
   };
 
   const openEdit = (p) => {
-    setForm({ ...p, price: String(p.price), cost: String(p.cost), stock: String(p.stock) });
+    setForm({ ...p, price: String(p.price), cost: String(p.cost), stock: String(p.stock), reorder_level: String(p.reorder_level || 5) });
     openModal('editProduct', p);
   };
 
@@ -142,17 +163,17 @@ export default function ProductsInventoryPage() {
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                     <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{p.category}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">${p.price.toFixed(2)}</td>
-                  <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">${p.cost.toFixed(2)}</td>
-                  <td className="px-4 py-2.5 text-[13px] font-semibold text-[#22c55e] border-b border-theme">${(p.price - p.cost).toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-[13px] font-bold text-[#3b82f6] border-b border-theme">{formatCurrency(p.price)}</td>
+                  <td className="px-4 py-2.5 text-[13px] text-theme3 border-b border-theme">{formatCurrency(p.cost)}</td>
+                  <td className="px-4 py-2.5 text-[13px] font-semibold text-[#22c55e] border-b border-theme">{formatCurrency(p.price - p.cost)}</td>
                   <td className="px-4 py-2.5 text-[13px] font-semibold border-b border-theme">{p.stock}</td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme">
                     <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[rgba(59,130,246,.12)] text-[#3b82f6]">{tracking === 'none' ? 'Simple' : tracking.charAt(0).toUpperCase() + tracking.slice(1)}</span>
                   </td>
                   <td className="px-4 py-2.5 text-[11px] text-theme3 border-b border-theme">{details}</td>
-                  <td className="px-4 py-2.5 text-[13px] border-b border-theme">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${p.stock === 0 ? 'bg-[rgba(239,68,68,.12)] text-[#ef4444]' : p.stock <= p.reorder ? 'bg-[rgba(249,115,22,.12)] text-[#f97316]' : 'bg-[rgba(34,197,94,.12)] text-[#22c55e]'}`}>
-                      {p.stock === 0 ? 'Out' : p.stock <= p.reorder ? 'Low' : 'OK'}
+                   <td className="px-4 py-2.5 text-[13px] border-b border-theme">
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${p.stock === 0 ? 'bg-[rgba(239,68,68,.12)] text-[#ef4444]' : p.stock <= (p.reorder_level || 5) ? 'bg-[rgba(249,115,22,.12)] text-[#f97316]' : 'bg-[rgba(34,197,94,.12)] text-[#22c55e]'}`}>
+                      {p.stock === 0 ? 'Out' : p.stock <= (p.reorder_level || 5) ? 'Low' : 'OK'}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-[13px] border-b border-theme flex gap-1">
@@ -161,7 +182,18 @@ export default function ProductsInventoryPage() {
                     </button>
                     <button onClick={() => openEdit(p)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-theme2 cursor-pointer hover:bg-theme-hover">Edit</button>
                     {profile?.role !== 'cashier' && (
-                      <button onClick={() => deleteProduct(p.id)} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-[#ef4444] cursor-pointer hover:bg-[rgba(239,68,68,.12)]">Delete</button>
+                      <button onClick={async () => {
+                        if (confirm('Delete this product?')) {
+                          try {
+                            logger.info(`Deleting product: ${p.id}`);
+                            await deleteProduct(p.id);
+                            showToast('Product deleted', 'success');
+                          } catch (err) {
+                            logger.error(`Failed to delete product ${p.id}`, { error: err.message });
+                            showToast('Delete failed: ' + err.message, 'error');
+                          }
+                        }
+                      }} className="bg-theme-elevated border border-theme px-2.5 py-1 rounded-md text-[11px] text-[#ef4444] cursor-pointer hover:bg-[rgba(239,68,68,.12)]">Delete</button>
                     )}
                   </td>
                 </tr>
@@ -256,7 +288,7 @@ function ProductForm({ form, setForm, suppliers }) {
           <Label title="Category" />
           <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6] transition-all">
-            {['Electronics', 'Mobiles', 'Laptops', 'Accessories', 'Storage', 'Networking', 'Supplies'].map(c => <option key={c}>{c}</option>)}
+            {PRODUCT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
@@ -271,17 +303,17 @@ function ProductForm({ form, setForm, suppliers }) {
       {/* Pricing */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label title="Selling Price" sub="$" />
+          <Label title="Selling Price" />
           <input type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6] font-bold" />
         </div>
         <div>
-          <Label title="Cost Price" sub="$" />
+          <Label title="Cost Price" />
           <input type="number" step="0.01" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]" />
         </div>
         <div className="col-span-2 text-center text-[11px] font-bold py-1 bg-theme-elevated/40 rounded italic text-theme3">
-            Margin: <span className="text-[#22c55e]">${(parseFloat(form.price || 0) - parseFloat(form.cost || 0)).toFixed(2)} ({form.price > 0 ? (((form.price-form.cost)/form.price)*100).toFixed(1) : '0'}%)</span>
+            Margin: <span className="text-[#22c55e]">{formatCurrency(parseFloat(form.price || 0) - parseFloat(form.cost || 0))} ({form.price > 0 ? (((form.price-form.cost)/form.price)*100).toFixed(1) : '0'}%)</span>
         </div>
       </div>
 
@@ -296,14 +328,14 @@ function ProductForm({ form, setForm, suppliers }) {
         </div>
         <div>
           <Label title="Reorder Level" />
-          <input type="number" value={form.reorder} onChange={e => setForm({ ...form, reorder: e.target.value })} 
+          <input type="number" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]" />
         </div>
         <div>
           <Label title="Warehouse" />
           <select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} 
             className="w-full bg-theme-elevated border border-theme rounded-lg py-2.5 px-3 text-[13px] text-theme outline-none focus:border-[#3b82f6]">
-            <option>Main</option><option>Branch A</option><option>Branch B</option>
+            {WAREHOUSE_OPTIONS.map(w => <option key={w}>{w}</option>)}
           </select>
         </div>
         <div>
